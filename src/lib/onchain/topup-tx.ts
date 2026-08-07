@@ -16,8 +16,15 @@ import { WARDOG_CA, WARCAT_CA } from "@/lib/tokens";
 /** Jetton decimals for $WARDOG / $WARCAT (same as on-chain claim nano). */
 export const JETTON_DECIMALS = 9;
 
-/** TON attached to the jetton-wallet message for fees. */
-export const TOPUP_GAS_TON = "0.06";
+/**
+ * TON attached to the user's jetton-wallet message.
+ * Must cover jetton processing + tiny forward; excess returns to you.
+ * 0.06 + forward 0.01 caused exit 709 in Tonkeeper sim — use 0.12.
+ */
+export const TOPUP_GAS_TON = "0.12";
+
+/** 1 nanoton — enough to carry comment / transfer_notification. */
+const FORWARD_TON_NANO = 1n;
 
 function bytesToBase64(bytes: Uint8Array): string {
   let binary = "";
@@ -66,13 +73,12 @@ export async function resolveUserJettonWallet(
 
 /**
  * TEP-74 transfer body.
- * Sent to the *user's* jetton wallet; destination = Claim Treasury.
+ * Sent to the *user's* jetton wallet; destination = Claim Treasury owner.
  */
 export function buildJettonTransferBodySafe(params: {
   amountNano: bigint;
   destination: string;
   responseDestination: string;
-  /** nanoton forwarded to destination (for transfer_notification). */
   forwardTon: bigint;
   comment?: string;
 }) {
@@ -91,9 +97,9 @@ export function buildJettonTransferBodySafe(params: {
       .storeUint(0, 32)
       .storeStringTail(params.comment)
       .endCell();
-    body.storeBit(true).storeRef(commentCell); // forward_payload in ref
+    body.storeBit(true).storeRef(commentCell);
   } else {
-    body.storeBit(false); // empty forward_payload
+    body.storeBit(false);
   }
 
   return body.endCell();
@@ -122,7 +128,7 @@ export async function buildTopupTransaction(params: {
     amountNano,
     destination: CLAIM_TREASURY.address,
     responseDestination: params.senderAddress,
-    forwardTon: toNano("0.01"),
+    forwardTon: FORWARD_TON_NANO,
     comment: params.comment,
   });
 
