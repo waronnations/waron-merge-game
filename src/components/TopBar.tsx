@@ -5,6 +5,7 @@ import { MAX_ENERGY, type GameState } from "@/lib/game-state";
 import { getRank, getLevel } from "@/lib/ranks";
 import { cn } from "@/lib/utils";
 import { usePayments } from "@/components/payments/PaymentProvider";
+import { TopupButton } from "@/components/TopupButton";
 
 export function TopBar({ state }: { state: GameState }) {
   const { rank, next, progress } = getRank(state.glory);
@@ -16,7 +17,6 @@ export function TopBar({ state }: { state: GameState }) {
     <div className="sticky top-0 z-30 border-b border-zinc-800/80 bg-[#0a0a0a]/95 px-3 pb-3.5 pt-3.5 backdrop-blur-xl">
       <div className="mx-auto max-w-md">
         <div className="flex items-center gap-3">
-          {/* Rank Insignia */}
           <div className="relative shrink-0">
             <div className="grid h-14 w-14 place-items-center rounded-2xl border border-zinc-700 bg-gradient-to-br from-zinc-900 to-black shadow-inner ring-1 ring-white/5">
               <div className={cn("text-2xl drop-shadow-md", rank.color)}>
@@ -25,7 +25,6 @@ export function TopBar({ state }: { state: GameState }) {
             </div>
           </div>
 
-          {/* Rank + Progress */}
           <div className="min-w-0 flex-1">
             <div className="flex items-center justify-between gap-2">
               <div className="min-w-0">
@@ -49,7 +48,6 @@ export function TopBar({ state }: { state: GameState }) {
               )}
             </div>
 
-            {/* Glory Progress Bar */}
             <div className="relative mt-2">
               <div className="h-1.5 w-full overflow-hidden rounded-full bg-zinc-900 ring-1 ring-inset ring-white/5">
                 <motion.div
@@ -65,7 +63,6 @@ export function TopBar({ state }: { state: GameState }) {
             </div>
           </div>
 
-          {/* Glory + Energy + Wallet */}
           <div className="flex flex-col items-end gap-1.5">
             <div className="flex items-center gap-1.5 rounded-2xl border border-zinc-700 bg-zinc-900/90 px-2.5 py-1.5">
               <Star className="h-3.5 w-3.5 text-amber-400" />
@@ -96,28 +93,30 @@ export function TopBar({ state }: { state: GameState }) {
               </span>
             </div>
 
-            {/* Wallet: stays connected until player disconnects */}
-            <button
-              type="button"
-              title={
-                connected && address
-                  ? `Connected ${address.slice(0, 6)}…${address.slice(-4)} · tap to disconnect`
-                  : "Connect wallet (required for shop & paid actions)"
-              }
-              onClick={() => {
-                if (connected) void disconnectWallet();
-                else void connectWallet();
-              }}
-              className={cn(
-                "flex items-center gap-1 rounded-2xl border px-2 py-1 text-[0.55rem] font-black uppercase tracking-wider transition",
-                connected
-                  ? "border-emerald-500/40 bg-emerald-950/40 text-emerald-400"
-                  : "border-zinc-700 bg-zinc-900/90 text-zinc-500 hover:border-zinc-500 hover:text-zinc-300",
-              )}
-            >
-              <Wallet className="h-3 w-3" />
-              {connected ? "On" : "Off"}
-            </button>
+            <div className="flex items-center gap-1">
+              <TopupButton className="!px-2 !py-1 !text-[0.55rem]" />
+              <button
+                type="button"
+                title={
+                  connected && address
+                    ? `Connected ${address.slice(0, 6)}…${address.slice(-4)} · tap to disconnect`
+                    : "Connect wallet (required for shop & paid actions)"
+                }
+                onClick={() => {
+                  if (connected) void disconnectWallet();
+                  else void connectWallet();
+                }}
+                className={cn(
+                  "flex items-center gap-1 rounded-2xl border px-2 py-1 text-[0.55rem] font-black uppercase tracking-wider transition",
+                  connected
+                    ? "border-emerald-500/40 bg-emerald-950/40 text-emerald-400"
+                    : "border-zinc-700 bg-zinc-900/90 text-zinc-500 hover:border-zinc-500 hover:text-zinc-300",
+                )}
+              >
+                <Wallet className="h-3 w-3" />
+                {connected ? "On" : "Off"}
+              </button>
+            </div>
           </div>
         </div>
       </div>
