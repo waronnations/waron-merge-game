@@ -1,5 +1,6 @@
 // src/components/TopupModal.tsx
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   useTonConnectUI,
   useTonWallet,
@@ -34,6 +35,11 @@ export function TopupModal({
   const [token, setToken] = useState<TopupToken>("wardog");
   const [amount, setAmount] = useState("50");
   const [busy, setBusy] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const refresh = async () => {
     try {
@@ -47,6 +53,16 @@ export function TopupModal({
   useEffect(() => {
     if (!open) return;
     void refresh();
+  }, [open]);
+
+  // Lock body scroll while open (helps Telegram WebView)
+  useEffect(() => {
+    if (!open) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
   }, [open]);
 
   const minAmount = snap?.minAmount ?? 10;
@@ -67,11 +83,6 @@ export function TopupModal({
     return false;
   };
 
-  /**
-   * 1) Server creates pending top-up (ledger + comment)
-   * 2) Wallet prompts jetton transfer to Claim Treasury
-   * 3) On approve → auto-confirm credits spendable
-   */
   const submitTopup = async () => {
     if (!address) {
       await connectIfNeeded();
@@ -109,7 +120,6 @@ export function TopupModal({
         return;
       }
 
-      // Dynamic import keeps @ton/core out of the critical path
       const { Buffer } = await import("buffer");
       (globalThis as unknown as { Buffer: typeof Buffer }).Buffer = Buffer;
       await import("@/lib/onchain/buffer-polyfill").catch(() => undefined);
@@ -186,16 +196,18 @@ export function TopupModal({
     }
   };
 
-  if (!open) return null;
+  if (!open || !mounted) return null;
 
-  return (
-    <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/70 p-4 sm:items-center">
-      <div
-        className="absolute inset-0"
-        onClick={() => !busy && onClose()}
-        aria-hidden
-      />
-      <div className="relative z-10 w-full max-w-md rounded-2xl border border-zinc-700 bg-zinc-950 p-4 shadow-xl">
+  const modal = (
+    <div
+      className="fixed inset-0 z-[9999] flex items-end justify-center bg-black/75 p-4 sm:items-center"
+      role="dialog"
+      aria-modal="true"
+      onClick={(e) => {
+        if (e.target === e.currentTarget && !busy) onClose();
+      }}
+    >
+      <div className="relative z-10 flex max-h-[90dvh] w-full max-w-md flex-col overflow-y-auto rounded-2xl border border-zinc-700 bg-zinc-950 p-4 shadow-2xl">
         <div className="mb-3 flex items-center justify-between">
           <h3 className="text-xs font-black uppercase tracking-widest text-zinc-300">
             Top up spendable
@@ -205,6 +217,7 @@ export function TopupModal({
             disabled={busy}
             onClick={onClose}
             className="rounded-lg p-1 text-zinc-500 hover:text-zinc-200"
+            aria-label="Close"
           >
             <X className="h-4 w-4" />
           </button>
@@ -214,7 +227,7 @@ export function TopupModal({
           Send $WARDOG / $WARCAT from your connected wallet to the Claim
           Treasury. Your{" "}
           <strong className="text-zinc-300">spendable</strong> balance is
-          credited after you approve in the wallet (shop, energy, nation fees).
+          credited after you approve in the wallet.
         </p>
 
         <div className="mb-3 grid grid-cols-2 gap-2">
@@ -309,4 +322,6 @@ export function TopupModal({
       </div>
     </div>
   );
+
+  return createPortal(modal, document.body);
 }
