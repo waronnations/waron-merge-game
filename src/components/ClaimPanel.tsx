@@ -17,6 +17,7 @@ import {
   type ClaimsSnapshot,
 } from "@/lib/claims.functions";
 import { TreasuryCard } from "@/components/TreasuryCard";
+import { TopupButton } from "@/components/TopupButton";
 import { ONCHAIN_CLAIM_GAS_TON } from "@/lib/onchain/contracts";
 import { cn } from "@/lib/utils";
 import type { TokenKey } from "@/components/claim/claim-helpers";
@@ -57,7 +58,7 @@ export function ClaimPanel({
   const pushBalanceSync = (snap: ClaimsSnapshot) => {
     if (!onBalanceSync) return;
     onBalanceSync({
-      // Spendable = total − claimed (same as claim vault)
+      // Claimable vault = total − claimed (not top-up spendable)
       wardogTokens: snap.balances.wardog,
       warcatTokens: snap.balances.warcat,
       claimedWardog: snap.claimed.wardog,
@@ -73,7 +74,6 @@ export function ClaimPanel({
         const snap = await getClaims();
         if (!cancelled && "claims" in snap) {
           setSnapshot(snap);
-          // Align BASE with server claimable on open
           pushBalanceSync(snap);
         }
       } catch {
@@ -233,7 +233,6 @@ export function ClaimPanel({
   const minAmount = snapshot?.minAmount ?? 10;
   const pendingClaims =
     snapshot?.claims.filter((c) => c.status === "pending") ?? [];
-  const hasPending = pendingClaims.length > 0;
   const onChainLive =
     snapshot?.onChainLive === true ||
     snapshot?.claimTreasuryAddress?.startsWith("EQCbh4") === true;
@@ -246,11 +245,14 @@ export function ClaimPanel({
 
   return (
     <div className="space-y-5 pb-8">
-      <div className="flex items-center gap-2 px-1">
-        <Coins className="h-4 w-4 text-amber-500" />
-        <h2 className="text-xs font-black uppercase tracking-widest text-zinc-400">
-          Claim Center
-        </h2>
+      <div className="flex items-center justify-between gap-2 px-1">
+        <div className="flex items-center gap-2">
+          <Coins className="h-4 w-4 text-amber-500" />
+          <h2 className="text-xs font-black uppercase tracking-widest text-zinc-400">
+            Claim Center
+          </h2>
+        </div>
+        <TopupButton className="!px-2.5 !py-1.5 !text-[0.6rem]" />
       </div>
 
       <TreasuryCard />
@@ -379,7 +381,7 @@ export function ClaimPanel({
         </button>
       </div>
 
-      <ClaimHistoryList snapshot={snapshot} />
+      <ClaimHistoryList claims={snapshot?.claims ?? []} />
     </div>
   );
 }
