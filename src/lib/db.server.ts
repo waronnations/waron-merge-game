@@ -96,6 +96,37 @@ export function ensureSchema(): Promise<void> {
       await sql`CREATE INDEX IF NOT EXISTS progress_glory_idx ON progress (glory DESC)`;
       await sql`ALTER TABLE progress ADD COLUMN IF NOT EXISTS claimed_wardog NUMERIC(20,4) NOT NULL DEFAULT 0`;
       await sql`ALTER TABLE progress ADD COLUMN IF NOT EXISTS claimed_warcat NUMERIC(20,4) NOT NULL DEFAULT 0`;
+      // ─── SPENDABLE (top-up balances for paid actions) ───────────────
+      await sql`ALTER TABLE progress ADD COLUMN IF NOT EXISTS spendable_wardog NUMERIC(20,4) NOT NULL DEFAULT 0`;
+      await sql`ALTER TABLE progress ADD COLUMN IF NOT EXISTS spendable_warcat NUMERIC(20,4) NOT NULL DEFAULT 0`;
+
+      // ─── TOP-UPS (player jetton deposits → spendable) ───────────────
+      await sql`
+        CREATE TABLE IF NOT EXISTS topups (
+          id              BIGSERIAL PRIMARY KEY,
+          user_id         BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          token           TEXT   NOT NULL CHECK (token IN ('wardog','warcat')),
+          amount          NUMERIC(20,4) NOT NULL CHECK (amount > 0),
+          status          TEXT   NOT NULL DEFAULT 'pending'
+                            CHECK (status IN ('pending','confirmed','expired','failed')),
+          wallet_address  TEXT   NOT NULL DEFAULT '',
+          tx_hash         TEXT,
+          comment         TEXT,
+          created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          confirmed_at    TIMESTAMPTZ,
+          expires_at      TIMESTAMPTZ NOT NULL DEFAULT (NOW() + INTERVAL '30 minutes')
+        )
+      `;
+      await sql`CREATE INDEX IF NOT EXISTS topups_user_idx ON topups (user_id, created_at DESC)`;
+      await sql`CREATE INDEX IF NOT EXISTS topups_status_idx ON topups (status, created_at DESC)`;
+      await sql`
+        CREATE UNIQUE INDEX IF NOT EXISTS topups_comment_uidx
+          ON topups (comment) WHERE comment IS NOT NULL
+      `;
+      await sql`
+        CREATE UNIQUE INDEX IF NOT EXISTS topups_tx_hash_uidx
+          ON topups (tx_hash) WHERE tx_hash IS NOT NULL
+      `;
 
       // ─── TREASURY DEPOSITS ───────────────────────────────────────────
       await sql`
