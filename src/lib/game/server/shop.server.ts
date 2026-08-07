@@ -3,9 +3,10 @@
  * Server-authoritative shop + board energy recover.
  *
  * Token model
- *  · Playable = progress tokens − claimed reserve (claim queue locked)
- *  · Shop: wallet authorization when paymentsLive, then spend $WARDOG or $WARCAT
- *  · Board recover: no wallet — spend playable $WARDOG or $WARCAT only
+ *  · Playable = progress tokens − claimed reserve (claim vault locked)
+ *  · Spendable = progress.spendable_* (from player top-ups)
+ *  · Shop: debit spendable first; when treasury is healthy, may fall back to playable
+ *  · Energy: when healthy, prefer playable; when strained, spendable only
  *  · Never native TON
  */
 
@@ -21,7 +22,13 @@ import {
   applyDynamicTax,
   recordTreasuryDeposit,
   getClaimedReserve,
+  getTreasuryHealth,
 } from "@/lib/treasury.server";
+import {
+  getSpendableBalances,
+  debitSpendable,
+  type TopupToken,
+} from "@/lib/topups.server";
 import {
   type ServerGameState,
   type ShopItemIdServer,
@@ -34,6 +41,10 @@ import {
 import type { GiftBoxId } from "@/lib/constants/gifts";
 
 export type PayToken = "wardog" | "warcat";
+
+function isTreasuryHealthy(zone: string): boolean {
+  return zone === "green" || zone === "yellow";
+}
 
 /** Spend full cost from a single playable token balance. */
 function spendFromSingleToken(
@@ -76,6 +87,85 @@ function spendFromSingleToken(
   };
 }
 
+/**
+ * Pay `cost` in `payWith`:
+ * 1) Spendable first (always allowed)
+ * 2) Remainder from playable only if allowPlayable
+ */
+async function payCost(
+  userId: number,
+  cost: number,
+  payWith: PayToken,
+  allowPlayable: boolean,
+  playableW: number,
+  playableC: number,
+): Promise<
+  | {
+      ok: true;
+      playableW: number;
+      playableC: number;
+      spentSpendable: number;
+      spentPlayableW: number;
+      spentPlayableC: number;
+    }
+  | { ok: false }
+> {
+  const need = normalizeToken(cost);
+  if (need <= 0) {
+    return {
+      ok: true,
+      playableW,
+      playableC,
+      spentSpendable: 0,
+      spentPlayableW: 0,
+      spentPlayableC: 0,
+    };
+  }
+
+  const spendable = await getSpendableBalances(userId);
+  const haveSpendable =
+    payWith === "wardog"
+      ? spendable.spendableWardog
+      : spendable.spendableWarcat;
+
+  const fromSpendable = Math.min(haveSpendable, need);
+  const remainder = normalizeToken(need - fromSpendable);
+
+  if (fromSpendable > 1e-9) {
+    const deb = await debitSpendable(
+      userId,
+      payWith as TopupToken,
+      fromSpendable,
+    );
+    if (!deb.ok) return { ok: false };
+  }
+
+  if (remainder <= 1e-9) {
+    return {
+      ok: true,
+      playableW,
+      playableC,
+      spentSpendable: fromSpendable,
+      spentPlayableW: 0,
+      spentPlayableC: 0,
+    };
+  }
+
+  if (!allowPlayable) return { ok: false };
+
+  const paid = spendFromSingleToken(playableW, playableC, remainder, payWith);
+  if (!paid.ok) return { ok: false };
+
+  return {
+    ok: true,
+    playableW: paid.wardog,
+    playableC: paid.warcat,
+    spentSpendable: fromSpendable,
+    spentPlayableW: paid.spentW,
+    spentPlayableC: paid.spentC,
+  };
+}
+
 export async function serverPurchaseShopItem(
   userId: number,
   itemId: ShopItemIdServer,
@@ -88,7 +178,6 @@ export async function serverPurchaseShopItem(
   const item = SHOP_ITEMS_SERVER[itemId];
   if (!item) return { ok: false, reason: "unknown_item" };
 
-  // Wallet authorization when live (no native TON). No-op while not live.
   try {
     await requirePayment(userId, `shop:${itemId}` as never);
   } catch {
@@ -106,21 +195,43 @@ export async function serverPurchaseShopItem(
   const baseCost = Number(item.cost);
   const cost = await applyDynamicTax(baseCost, payWith);
 
+  const health = await getTreasuryHealth();
+  const allowPlayable = isTreasuryHealthy(health.zone);
+
   const reserve = await getClaimedReserve(userId);
-  const playableW = Math.max(0, Number(state.wardogTokens ?? 0) - reserve.wardog);
-  const playableC = Math.max(0, Number(state.warcatTokens ?? 0) - reserve.warcat);
+  const playableW = Math.max(
+    0,
+    Number(state.wardogTokens ?? 0) - reserve.wardog,
+  );
+  const playableC = Math.max(
+    0,
+    Number(state.warcatTokens ?? 0) - reserve.warcat,
+  );
 
-  const paid = spendFromSingleToken(playableW, playableC, cost, payWith);
-  if (!paid.ok) return { ok: false, reason: "insufficient_tokens" };
+  const paid = await payCost(
+    userId,
+    cost,
+    payWith,
+    allowPlayable,
+    playableW,
+    playableC,
+  );
+  if (!paid.ok) {
+    return {
+      ok: false,
+      reason: allowPlayable ? "insufficient_tokens" : "insufficient_spendable",
+    };
+  }
 
-  // Keep claimed reserve intact on the ledger totals
-  state.wardogTokens = normalizeToken(paid.wardog + reserve.wardog);
-  state.warcatTokens = normalizeToken(paid.warcat + reserve.warcat);
+  // Ledger totals = remaining playable + claimed reserve
+  state.wardogTokens = normalizeToken(paid.playableW + reserve.wardog);
+  state.warcatTokens = normalizeToken(paid.playableC + reserve.warcat);
 
   if (itemId === "energyPack") {
     state.energy = Math.min(
       MAX_ENERGY,
-      Number(state.energy ?? 0) + Number((item as { energy?: number }).energy ?? 0),
+      Number(state.energy ?? 0) +
+        Number((item as { energy?: number }).energy ?? 0),
     );
     state.lastRegenAt = Date.now();
   } else if (itemId === "gloryBoost") {
@@ -130,9 +241,7 @@ export async function serverPurchaseShopItem(
       base + Number((item as { durationMs?: number }).durationMs ?? 0);
   } else if (itemId === "nukePack") {
     state.nukesOwned = (Number(state.nukesOwned) || 0) + 1;
-  }
-  // ── Gift Boxes ──────────────────────────────────────────────
-  else if (
+  } else if (
     itemId === "gift_common" ||
     itemId === "gift_wardog" ||
     itemId === "gift_warcat" ||
@@ -152,14 +261,21 @@ export async function serverPurchaseShopItem(
 
   const multiplier = baseCost > 0 ? cost / baseCost : 1;
   const taxedShare = multiplier > 0 ? (multiplier - 1) / multiplier : 0;
+  // Tax surplus bookkeeping: attribute to playable portion only (treasury story)
+  const spentPlayableTotal = paid.spentPlayableW + paid.spentPlayableC;
   await recordTreasuryDeposit({
     userId,
     source: `shop:${itemId}`,
-    wardog: paid.spentW * taxedShare,
-    warcat: paid.spentC * taxedShare,
+    wardog: paid.spentPlayableW * taxedShare,
+    warcat: paid.spentPlayableC * taxedShare,
     baseAmount: baseCost,
     multiplier,
-    details: { payWith },
+    details: {
+      payWith,
+      spentSpendable: paid.spentSpendable,
+      spentPlayable: spentPlayableTotal,
+      treasuryZone: health.zone,
+    },
   });
 
   await writeProgress(userId, state, { touchSyncClock: false });
@@ -167,8 +283,9 @@ export async function serverPurchaseShopItem(
 }
 
 /**
- * Board energy recovery — playable tokens only, no wallet.
- * Player chooses $WARDOG or $WARCAT; claimed reserve cannot be spent.
+ * Board energy recovery.
+ * Healthy treasury: prefer playable, then spendable.
+ * Strained: spendable only.
  */
 export async function serverRecoverEnergy(
   userId: number,
@@ -197,12 +314,36 @@ export async function serverRecoverEnergy(
   const energy = clampServerEnergy(state.energy, 0);
   if (energy >= MAX_ENERGY) return { ok: false, reason: "energy_full" };
 
+  const health = await getTreasuryHealth();
+  const healthy = isTreasuryHealthy(health.zone);
+
   const reserve = await getClaimedReserve(userId);
-  const playableW = Math.max(0, Number(state.wardogTokens ?? 0) - reserve.wardog);
-  const playableC = Math.max(0, Number(state.warcatTokens ?? 0) - reserve.warcat);
+  let playableW = Math.max(
+    0,
+    Number(state.wardogTokens ?? 0) - reserve.wardog,
+  );
+  let playableC = Math.max(
+    0,
+    Number(state.warcatTokens ?? 0) - reserve.warcat,
+  );
   const playable = payWith === "wardog" ? playableW : playableC;
 
-  if (playable < 0.001) return { ok: false, reason: "no_tokens" };
+  const spendable = await getSpendableBalances(userId);
+  const haveSpendable =
+    payWith === "wardog"
+      ? spendable.spendableWardog
+      : spendable.spendableWarcat;
+
+  const availablePool = healthy
+    ? playable + haveSpendable
+    : haveSpendable;
+
+  if (availablePool < 0.001) {
+    return {
+      ok: false,
+      reason: healthy ? "no_tokens" : "insufficient_spendable",
+    };
+  }
 
   const RECOVER_AMOUNT = RECOVER_ENERGY_AMOUNT;
   const RECOVER_COST = await applyDynamicTax(RECOVER_ENERGY_TOKEN_COST, payWith);
@@ -212,16 +353,60 @@ export async function serverRecoverEnergy(
   const room = MAX_ENERGY - energy;
   const desiredEnergy = Math.min(RECOVER_AMOUNT, room);
   const desiredCost = (desiredEnergy / RECOVER_AMOUNT) * RECOVER_COST;
-  const cost = Math.min(desiredCost, playable);
+  const cost = Math.min(desiredCost, availablePool);
   const energyGain = Math.round((cost / RECOVER_COST) * RECOVER_AMOUNT);
-  if (energyGain <= 0 || cost < 1e-9) return { ok: false, reason: "no_tokens" };
+  if (energyGain <= 0 || cost < 1e-9) {
+    return {
+      ok: false,
+      reason: healthy ? "no_tokens" : "insufficient_spendable",
+    };
+  }
 
-  const paid = spendFromSingleToken(playableW, playableC, cost, payWith);
-  if (!paid.ok) return { ok: false, reason: "no_tokens" };
+  let spentW = 0;
+  let spentC = 0;
+  let spentSpendable = 0;
+
+  if (healthy) {
+    // Prefer playable first for energy when treasury is healthy
+    const fromPlayable = Math.min(playable, cost);
+    const remainder = normalizeToken(cost - fromPlayable);
+
+    if (fromPlayable > 1e-9) {
+      const paid = spendFromSingleToken(
+        playableW,
+        playableC,
+        fromPlayable,
+        payWith,
+      );
+      if (!paid.ok) return { ok: false, reason: "no_tokens" };
+      playableW = paid.wardog;
+      playableC = paid.warcat;
+      spentW += paid.spentW;
+      spentC += paid.spentC;
+    }
+
+    if (remainder > 1e-9) {
+      const deb = await debitSpendable(
+        userId,
+        payWith as TopupToken,
+        remainder,
+      );
+      if (!deb.ok) return { ok: false, reason: "insufficient_spendable" };
+      spentSpendable = remainder;
+      if (payWith === "wardog") spentW += remainder;
+      else spentC += remainder;
+    }
+  } else {
+    const deb = await debitSpendable(userId, payWith as TopupToken, cost);
+    if (!deb.ok) return { ok: false, reason: "insufficient_spendable" };
+    spentSpendable = cost;
+    if (payWith === "wardog") spentW = cost;
+    else spentC = cost;
+  }
 
   state.energy = Math.min(MAX_ENERGY, energy + energyGain);
-  state.wardogTokens = normalizeToken(paid.wardog + reserve.wardog);
-  state.warcatTokens = normalizeToken(paid.warcat + reserve.warcat);
+  state.wardogTokens = normalizeToken(playableW + reserve.wardog);
+  state.warcatTokens = normalizeToken(playableC + reserve.warcat);
   state.lastRegenAt = Date.now();
 
   await sql`
@@ -233,11 +418,15 @@ export async function serverRecoverEnergy(
   await recordTreasuryDeposit({
     userId,
     source: "recoverEnergy",
-    wardog: paid.spentW * taxedShare,
-    warcat: paid.spentC * taxedShare,
+    wardog: (spentW - (payWith === "wardog" ? spentSpendable : 0)) * taxedShare,
+    warcat: (spentC - (payWith === "warcat" ? spentSpendable : 0)) * taxedShare,
     baseAmount: cost / (taxMultiplier || 1),
     multiplier: taxMultiplier,
-    details: { payWith },
+    details: {
+      payWith,
+      spentSpendable,
+      treasuryZone: health.zone,
+    },
   });
 
   await writeProgress(userId, state, { touchSyncClock: false });
@@ -245,6 +434,6 @@ export async function serverRecoverEnergy(
     ok: true,
     state,
     energy: energyGain,
-    spent: { wardog: paid.spentW, warcat: paid.spentC },
+    spent: { wardog: spentW, warcat: spentC },
   };
 }
