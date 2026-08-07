@@ -2,7 +2,7 @@
 /**
  * Vault, buffs, protection, traitor redemption & invite rewards.
  * Server-only. All economy actions stay authoritative:
- *  · player spends are taken from PLAYABLE balances (totals − claimed reserve)
+ *  · player spends: spendable first; playable (totals − claimed) only when treasury is healthy
  *  · every fee runs through the live treasury multiplier
  *  · the taxed delta is recorded as a pending treasury deposit
  */
@@ -25,7 +25,13 @@ import {
   quoteDynamicTax,
   recordTreasuryDeposit,
   getClaimedReserve,
+  getTreasuryHealth,
 } from "@/lib/treasury.server";
+import {
+  getSpendableBalances,
+  debitSpendable,
+  type TopupToken,
+} from "@/lib/topups.server";
 import {
   loadProgress,
   writeProgress,
@@ -35,7 +41,7 @@ import {
 import { recalculateReputation } from "@/lib/nations/reputation.server";
 import { logNationEvent } from "@/lib/nations/history.server";
 
-/** Playable (spendable) balances = ledger totals − claimed reserve. */
+/** Playable balances = ledger totals − claimed reserve. */
 async function loadPlayable(userId: number) {
   const prev = await loadProgress(userId);
   if (!prev) throw new Error("no_progress");
@@ -53,8 +59,8 @@ async function loadPlayable(userId: number) {
 }
 
 /**
- * Deducts tokens from a player's playable balance and persists progress.
- * Throws `insufficient_tokens` when the player cannot cover the spend.
+ * Prefer spendable; if treasury is healthy (green/yellow), allow playable remainder.
+ * Throws insufficient_spendable | insufficient_tokens.
  */
 async function spendPlayableTokens(
   userId: number,
@@ -65,18 +71,52 @@ async function spendPlayableTokens(
   const c = normalizeToken(Math.max(0, Number(warcat) || 0));
   if (w <= 0 && c <= 0) return;
 
+  const health = await getTreasuryHealth();
+  const allowPlayable =
+    health.zone === "green" || health.zone === "yellow";
+
   const { state, reserve, playableWardog, playableWarcat } =
     await loadPlayable(userId);
 
-  if (playableWardog < w - 1e-6 || playableWarcat < c - 1e-6) {
+  const spendable = await getSpendableBalances(userId);
+
+  let needW = w;
+  let needC = c;
+  const fromSpendableW = Math.min(spendable.spendableWardog, needW);
+  const fromSpendableC = Math.min(spendable.spendableWarcat, needC);
+  needW = normalizeToken(needW - fromSpendableW);
+  needC = normalizeToken(needC - fromSpendableC);
+
+  if (fromSpendableW > 1e-9) {
+    const d = await debitSpendable(
+      userId,
+      "wardog" as TopupToken,
+      fromSpendableW,
+    );
+    if (!d.ok) throw new Error("insufficient_spendable");
+  }
+  if (fromSpendableC > 1e-9) {
+    const d = await debitSpendable(
+      userId,
+      "warcat" as TopupToken,
+      fromSpendableC,
+    );
+    if (!d.ok) throw new Error("insufficient_spendable");
+  }
+
+  if (needW <= 1e-9 && needC <= 1e-9) return;
+
+  if (!allowPlayable) throw new Error("insufficient_spendable");
+
+  if (playableWardog < needW - 1e-6 || playableWarcat < needC - 1e-6) {
     throw new Error("insufficient_tokens");
   }
 
   state.wardogTokens = normalizeToken(
-    subTokens(playableWardog, w) + reserve.wardog,
+    subTokens(playableWardog, needW) + reserve.wardog,
   );
   state.warcatTokens = normalizeToken(
-    subTokens(playableWarcat, c) + reserve.warcat,
+    subTokens(playableWarcat, needC) + reserve.warcat,
   );
 
   await writeProgress(userId, state, { touchSyncClock: false });
@@ -99,7 +139,6 @@ export async function donateToVault(
   const c = normalizeToken(Math.max(0, Number(warcatAmount) || 0));
   if (w <= 0 && c <= 0) throw new Error("invalid_amount");
 
-  // The vault receives the base amount; the player pays base × multiplier.
   const quoteW = w > 0 ? await quoteDynamicTax(w) : null;
   const quoteC = c > 0 ? await quoteDynamicTax(c) : null;
 
@@ -201,7 +240,6 @@ export async function activateNationBuff(
     });
   }
 
-  // Instant-effect buffs (e.g. Supply Drop) grant energy to every member.
   const energyGrant = Number(
     (buff as { energyGrant?: number }).energyGrant ?? 0,
   );
@@ -333,7 +371,6 @@ export async function setRedemptionPrice(
   return { ok: true as const, wardog: w, warcat: c };
 }
 
-/** The nation a traitor betrayed most recently (used for redemption payouts). */
 async function findBetrayedNation(userId: number): Promise<number | null> {
   const res = await sql`
     SELECT nation_id FROM nation_history
@@ -346,11 +383,6 @@ async function findBetrayedNation(userId: number): Promise<number | null> {
   return id != null ? Number(id) : null;
 }
 
-/**
- * Clears traitor status.
- *  · pay = true  → spend the betrayed nation's redemption price (goes to its vault)
- *  · pay = false → only allowed once the traitor cooldown has elapsed
- */
 export async function redeemTraitor(
   userId: number,
   pay: boolean,
@@ -376,7 +408,6 @@ export async function redeemTraitor(
       throw new Error("cooldown_active");
     }
   } else {
-    // Priced by the betrayed nation (falls back to the schema default of 15).
     let priceW = 15;
     let priceC = 15;
     if (nationId != null) {
@@ -447,7 +478,6 @@ export async function isNationProtected(nationId: number): Promise<boolean> {
   return new Date(String(row.protection_expires_at)).getTime() > Date.now();
 }
 
-/** Called when a referral joins a nation — awards inviter + nation. */
 export async function grantNationInviteReward(
   inviterId: number,
   nationId: number,
