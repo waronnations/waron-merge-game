@@ -1,7 +1,10 @@
 // src/components/TopupModal.tsx
 import { useEffect, useState } from "react";
-import { useTonWallet } from "@tonconnect/ui-react";
-import { ArrowDownToLine, Loader2, X, Copy, Check } from "lucide-react";
+import {
+  useTonConnectUI,
+  useTonWallet,
+} from "@tonconnect/ui-react";
+import { ArrowDownToLine, Loader2, X } from "lucide-react";
 import { toast } from "sonner";
 import { haptic } from "@/lib/telegram";
 import { TOKENS, shortenAddress } from "@/lib/tokens";
@@ -24,24 +27,18 @@ export function TopupModal({
   onClose: () => void;
 }) {
   const wallet = useTonWallet();
+  const [tonConnectUI] = useTonConnectUI();
   const address = wallet?.account?.address;
 
   const [snap, setSnap] = useState<Snapshot | null>(null);
   const [token, setToken] = useState<TopupToken>("wardog");
   const [amount, setAmount] = useState("50");
   const [busy, setBusy] = useState(false);
-  const [phase, setPhase] = useState<"form" | "await_tx">("form");
-  const [pendingId, setPendingId] = useState<number | null>(null);
-  const [comment, setComment] = useState("");
-  const [depositAddress, setDepositAddress] = useState("");
-  const [txHash, setTxHash] = useState("");
-  const [copied, setCopied] = useState<"addr" | "comment" | null>(null);
 
   const refresh = async () => {
     try {
       const s = await getTopupSnapshot();
       setSnap(s);
-      if (s.depositAddress) setDepositAddress(s.depositAddress);
     } catch {
       /* offline */
     }
@@ -49,10 +46,6 @@ export function TopupModal({
 
   useEffect(() => {
     if (!open) return;
-    setPhase("form");
-    setPendingId(null);
-    setComment("");
-    setTxHash("");
     void refresh();
   }, [open]);
 
@@ -62,22 +55,29 @@ export function TopupModal({
     spendableWarcat: 0,
   };
 
-  const copy = async (text: string, kind: "addr" | "comment") => {
+  const connectIfNeeded = async () => {
+    if (address) return true;
     try {
-      await navigator.clipboard.writeText(text);
-      setCopied(kind);
+      await tonConnectUI.openModal();
       haptic("light");
-      setTimeout(() => setCopied(null), 1500);
+      toast.message("Connect a TON wallet to top up");
     } catch {
-      toast.error("Could not copy");
+      toast.error("Could not open wallet connect");
     }
+    return false;
   };
 
-  const startTopup = async () => {
+  /**
+   * 1) Server creates pending top-up (ledger + comment)
+   * 2) Wallet prompts jetton transfer to Claim Treasury
+   * 3) On approve → auto-confirm credits spendable
+   */
+  const submitTopup = async () => {
     if (!address) {
-      toast.error("Connect your TON wallet first");
+      await connectIfNeeded();
       return;
     }
+
     const n = Number(amount);
     if (!Number.isFinite(n) || n < minAmount) {
       toast.error(`Minimum top-up is ${minAmount}`);
@@ -86,7 +86,7 @@ export function TopupModal({
 
     setBusy(true);
     try {
-      const res = await createTopup({
+      const intent = await createTopup({
         data: {
           token,
           amount: n,
@@ -94,77 +94,93 @@ export function TopupModal({
         },
       });
 
-      if (!res.ok) {
+      if (!intent.ok) {
         toast.error(
           {
             below_minimum: `Minimum top-up is ${minAmount}`,
             wallet_required: "Connect your TON wallet first",
             topup_already_pending:
-              "You already have a pending top-up for this token",
+              "A top-up is already in progress for this token — try again in a minute",
             database_unavailable: "Top-up desk offline — try again",
-          }[res.error] ??
-            res.error ??
+          }[intent.error] ??
+            intent.error ??
             "Could not start top-up",
         );
         return;
       }
 
-      setPendingId(res.topup.id);
-      setComment(res.comment);
-      setDepositAddress(res.depositAddress);
-      setPhase("await_tx");
-      haptic("medium");
-      toast.success("Top-up created — send jettons, then paste TX hash");
-    } catch (e) {
-      console.error("[startTopup]", e);
-      toast.error("Top-up request failed");
-    } finally {
-      setBusy(false);
-    }
-  };
+      // Dynamic import keeps @ton/core out of the critical path
+      const { Buffer } = await import("buffer");
+      (globalThis as unknown as { Buffer: typeof Buffer }).Buffer = Buffer;
+      await import("@/lib/onchain/buffer-polyfill").catch(() => undefined);
 
-  const confirm = async () => {
-    if (!pendingId) return;
-    const hash = txHash.trim();
-    if (hash.length < 8) {
-      toast.error("Paste the transaction hash from your wallet");
-      return;
-    }
+      const { buildTopupTransaction } = await import(
+        "@/lib/onchain/topup-tx"
+      );
 
-    setBusy(true);
-    try {
-      const res = await confirmTopupFn({
-        data: { topupId: pendingId, txHash: hash },
+      let tx;
+      try {
+        tx = await buildTopupTransaction({
+          token,
+          amount: n,
+          senderAddress: address,
+          comment: intent.comment,
+        });
+      } catch (e: unknown) {
+        const msg = String((e as Error)?.message ?? e);
+        if (msg.includes("jetton_wallet_not_found")) {
+          toast.error(
+            `No ${TOKENS[token].symbol} in this wallet — buy or transfer some first`,
+          );
+        } else {
+          console.error("[buildTopupTransaction]", e);
+          toast.error("Could not prepare jetton transfer");
+        }
+        return;
+      }
+
+      let boc: string | null = null;
+      try {
+        const result = await tonConnectUI.sendTransaction(tx);
+        boc = result?.boc ?? null;
+      } catch (txErr: unknown) {
+        const msg = String((txErr as { message?: string })?.message ?? "");
+        if (
+          msg.toLowerCase().includes("cancel") ||
+          msg.toLowerCase().includes("reject")
+        ) {
+          toast.error("Transfer cancelled");
+        } else {
+          console.error("[topup sendTransaction]", txErr);
+          toast.error("Wallet rejected the transfer");
+        }
+        return;
+      }
+
+      const confirmed = await confirmTopupFn({
+        data: {
+          topupId: intent.topup.id,
+          txHash: boc ?? `boc-${intent.topup.id}-${Date.now()}`,
+        },
       });
 
-      if (!res.ok) {
+      if (!confirmed.ok) {
         toast.error(
-          {
-            tx_hash_required: "Paste a valid TX hash",
-            not_found: "Top-up not found",
-            not_pending: "This top-up is no longer pending",
-            expired: "Top-up expired — start a new one",
-            tx_already_used: "This TX was already used",
-          }[res.error] ??
-            res.error ??
-            "Confirm failed",
+          "Transfer sent — credit pending. Reopen Top up in a moment if balance is delayed.",
         );
+        await refresh();
         return;
       }
 
       haptic("medium");
       toast.success(
-        `+${res.topup.amount} ${TOKENS[res.topup.token].symbol} added to spendable`,
+        `+${confirmed.topup.amount} ${TOKENS[token].symbol} added to spendable`,
       );
-      setPhase("form");
-      setPendingId(null);
-      setComment("");
-      setTxHash("");
       await refresh();
       onClose();
     } catch (e) {
-      console.error("[confirmTopup]", e);
-      toast.error("Confirm failed");
+      console.error("[submitTopup]", e);
+      toast.error("Top-up failed");
     } finally {
       setBusy(false);
     }
@@ -195,10 +211,10 @@ export function TopupModal({
         </div>
 
         <p className="mb-3 text-[0.7rem] leading-relaxed text-zinc-500">
-          Send $WARDOG / $WARCAT to the Claim Treasury. After the transfer,
-          paste the TX hash to credit your{" "}
-          <strong className="text-zinc-300">spendable</strong> balance (shop,
-          energy when strained, nation fees). Claimable vault is separate.
+          Send $WARDOG / $WARCAT from your connected wallet to the Claim
+          Treasury. Your{" "}
+          <strong className="text-zinc-300">spendable</strong> balance is
+          credited after you approve in the wallet (shop, energy, nation fees).
         </p>
 
         <div className="mb-3 grid grid-cols-2 gap-2">
@@ -220,150 +236,76 @@ export function TopupModal({
           </div>
         </div>
 
-        {phase === "form" ? (
-          <div className="space-y-3">
-            <div className="flex gap-2">
-              {(["wardog", "warcat"] as const).map((t) => (
-                <button
-                  key={t}
-                  type="button"
-                  onClick={() => setToken(t)}
-                  className={cn(
-                    "flex-1 rounded-xl py-2 text-xs font-black uppercase tracking-wider",
-                    token === t
-                      ? t === "wardog"
-                        ? "bg-amber-500 text-black"
-                        : "bg-sky-500 text-black"
-                      : "bg-zinc-900 text-zinc-500",
-                  )}
-                >
-                  {TOKENS[t].symbol}
-                </button>
-              ))}
-            </div>
-
-            <label className="block">
-              <span className="mb-1 block text-[0.6rem] font-bold uppercase tracking-wider text-zinc-500">
-                Amount (min {minAmount})
-              </span>
-              <input
-                type="number"
-                min={minAmount}
-                step="1"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white outline-none focus:border-emerald-500/50"
-              />
-            </label>
-
-            {!address ? (
-              <p className="text-center text-[0.7rem] text-amber-400">
-                Connect your TON wallet first (TopBar or Claim Center)
-              </p>
-            ) : (
-              <p className="text-center font-mono text-[0.65rem] text-zinc-500">
-                From {shortenAddress(address)}
-              </p>
-            )}
-
-            <button
-              type="button"
-              disabled={busy || !address}
-              onClick={() => void startTopup()}
-              className={cn(
-                "flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-black uppercase tracking-wider",
-                busy || !address
-                  ? "cursor-not-allowed bg-zinc-800 text-zinc-500"
-                  : "bg-emerald-500 text-black hover:bg-emerald-400",
-              )}
-            >
-              {busy ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <ArrowDownToLine className="h-4 w-4" />
-              )}
-              {busy ? "Creating…" : "Create top-up"}
-            </button>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            <div className="rounded-xl border border-emerald-500/30 bg-emerald-950/20 p-3 text-[0.7rem] text-emerald-100/90">
-              <p className="mb-2 font-bold uppercase tracking-wider text-emerald-300">
-                Send {amount} {TOKENS[token].symbol}
-              </p>
-              <p className="mb-1 text-zinc-400">Treasury address</p>
+        <div className="space-y-3">
+          <div className="flex gap-2">
+            {(["wardog", "warcat"] as const).map((t) => (
               <button
-                type="button"
-                onClick={() => void copy(depositAddress, "addr")}
-                className="mb-2 flex w-full items-center justify-between gap-2 rounded-lg bg-black/40 px-2 py-1.5 font-mono text-[0.65rem] text-emerald-200"
-              >
-                <span className="truncate">{depositAddress}</span>
-                {copied === "addr" ? (
-                  <Check className="h-3.5 w-3.5 shrink-0" />
-                ) : (
-                  <Copy className="h-3.5 w-3.5 shrink-0" />
-                )}
-              </button>
-              <p className="mb-1 text-zinc-400">
-                Comment / memo (if wallet supports it)
-              </p>
-              <button
-                type="button"
-                onClick={() => void copy(comment, "comment")}
-                className="flex w-full items-center justify-between gap-2 rounded-lg bg-black/40 px-2 py-1.5 font-mono text-[0.65rem] text-emerald-200"
-              >
-                <span className="truncate">{comment}</span>
-                {copied === "comment" ? (
-                  <Check className="h-3.5 w-3.5 shrink-0" />
-                ) : (
-                  <Copy className="h-3.5 w-3.5 shrink-0" />
-                )}
-              </button>
-            </div>
-
-            <label className="block">
-              <span className="mb-1 block text-[0.6rem] font-bold uppercase tracking-wider text-zinc-500">
-                Transaction hash
-              </span>
-              <input
-                type="text"
-                value={txHash}
-                onChange={(e) => setTxHash(e.target.value)}
-                placeholder="Paste TX hash after sending"
-                className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 font-mono text-xs text-white outline-none focus:border-emerald-500/50"
-              />
-            </label>
-
-            <div className="flex gap-2">
-              <button
+                key={t}
                 type="button"
                 disabled={busy}
-                onClick={() => {
-                  setPhase("form");
-                  setPendingId(null);
-                  setTxHash("");
-                }}
-                className="flex-1 rounded-xl bg-zinc-800 py-3 text-xs font-black uppercase tracking-wider text-zinc-400"
-              >
-                Back
-              </button>
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => void confirm()}
+                onClick={() => setToken(t)}
                 className={cn(
-                  "flex flex-[2] items-center justify-center gap-2 rounded-xl py-3 text-xs font-black uppercase tracking-wider",
-                  busy
-                    ? "bg-zinc-800 text-zinc-500"
-                    : "bg-emerald-500 text-black hover:bg-emerald-400",
+                  "flex-1 rounded-xl py-2 text-xs font-black uppercase tracking-wider",
+                  token === t
+                    ? t === "wardog"
+                      ? "bg-amber-500 text-black"
+                      : "bg-sky-500 text-black"
+                    : "bg-zinc-900 text-zinc-500",
                 )}
               >
-                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                Confirm credit
+                {TOKENS[t].symbol}
               </button>
-            </div>
+            ))}
           </div>
-        )}
+
+          <label className="block">
+            <span className="mb-1 block text-[0.6rem] font-bold uppercase tracking-wider text-zinc-500">
+              Amount (min {minAmount})
+            </span>
+            <input
+              type="number"
+              min={minAmount}
+              step="1"
+              value={amount}
+              disabled={busy}
+              onChange={(e) => setAmount(e.target.value)}
+              className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white outline-none focus:border-emerald-500/50"
+            />
+          </label>
+
+          {address ? (
+            <p className="text-center font-mono text-[0.65rem] text-zinc-500">
+              From {shortenAddress(address)}
+            </p>
+          ) : (
+            <p className="text-center text-[0.7rem] text-amber-400">
+              Wallet not connected — tap below to connect
+            </p>
+          )}
+
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => void submitTopup()}
+            className={cn(
+              "flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-black uppercase tracking-wider",
+              busy
+                ? "cursor-not-allowed bg-zinc-800 text-zinc-500"
+                : "bg-emerald-500 text-black hover:bg-emerald-400",
+            )}
+          >
+            {busy ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <ArrowDownToLine className="h-4 w-4" />
+            )}
+            {busy
+              ? "Waiting for wallet…"
+              : address
+                ? `Send ${TOKENS[token].symbol}`
+                : "Connect wallet"}
+          </button>
+        </div>
       </div>
     </div>
   );
