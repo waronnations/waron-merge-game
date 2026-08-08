@@ -13,6 +13,8 @@ import {
   Users,
   ExternalLink,
   Share2,
+  MessageCircle,
+  Megaphone,
 } from "lucide-react";
 import { toast } from "sonner";
 import { TabHero } from "@/components/game/TabHero";
@@ -22,6 +24,10 @@ import {
   haptic,
   shareReferralInvite,
   openWaronCommunity,
+  shareStrikeRevenge,
+  shareStrikeFlex,
+  buildStrikeRevengeText,
+  buildStrikeFlexText,
 } from "@/lib/telegram";
 import {
   buildReferralLink,
@@ -86,6 +92,13 @@ type TargetPreview = {
   protected: boolean;
 };
 
+/** Last successful hit — powers revenge / flex share buttons */
+type LastHit = {
+  weaponId: BattlefieldWeaponId;
+  victimLabel: string;
+  glory: number;
+};
+
 const WEAPON_IDS = Object.keys(BATTLEFIELD_WEAPONS) as BattlefieldWeaponId[];
 
 function formatCooldown(readyAt: number): string {
@@ -131,6 +144,7 @@ export function OpsTab({
   const [previewLoading, setPreviewLoading] = useState(false);
   const [strikeWeapon, setStrikeWeapon] = useState<BattlefieldWeaponId>("knife");
   const [tick, setTick] = useState(0);
+  const [lastHit, setLastHit] = useState<LastHit | null>(null);
 
   const referralCode = state.referralCode?.trim() || "";
   const referralLink = referralCode
@@ -156,6 +170,38 @@ export function OpsTab({
     openWaronCommunity();
     haptic("light");
   };
+
+  /** DM-style taunt — pick victim in share sheet */
+  const shareRevenge = useCallback(
+    (hit?: LastHit | null) => {
+      const src = hit ?? lastHit;
+      const weaponId = src?.weaponId ?? strikeWeapon;
+      shareStrikeRevenge({ weaponId, referralLink });
+      haptic("medium");
+      toast.success("Share revenge — pick their chat");
+    },
+    [lastHit, strikeWeapon, referralLink],
+  );
+
+  /** Public flex — pick @waronnations or any chat */
+  const shareFlex = useCallback(
+    (hit?: LastHit | null) => {
+      const src = hit ?? lastHit;
+      if (!src) {
+        openShareReferral();
+        return;
+      }
+      shareStrikeFlex({
+        weaponId: src.weaponId,
+        victimLabel: src.victimLabel,
+        glory: src.glory,
+        referralLink,
+      });
+      haptic("medium");
+      toast.success("Share flex — pick @waronnations or a chat");
+    },
+    [lastHit, referralLink, openShareReferral],
+  );
 
   const quoteMap = useMemo(() => {
     const m = new Map<string, Quote>();
@@ -281,10 +327,24 @@ export function OpsTab({
       });
       haptic(res.hit ? "heavy" : "light");
       if (res.hit) {
+        const victimLabel =
+          res.victimName ??
+          (res.victimTelegramId ? `tg:${res.victimTelegramId}` : "a soldier");
+        const hit: LastHit = {
+          weaponId: strikeWeapon,
+          victimLabel,
+          glory: res.gloryGained,
+        };
+        setLastHit(hit);
+
         toast.success(
-          `HIT · ${res.victimName ?? "target"} · +${res.gloryGained} glory · +${fmtToken(res.tokenReward)} tokens`,
+          `HIT · ${victimLabel} · +${res.gloryGained} glory · +${fmtToken(res.tokenReward)} tokens`,
         );
-        setTimeout(() => openShareReferral(), 600);
+
+        // Auto flex share sheet — player can pick @waronnations or a friend
+        setTimeout(() => {
+          shareFlex(hit);
+        }, 700);
       } else {
         toast.message(`Miss on ${res.victimName ?? "target"} — weapon spent`);
       }
@@ -312,6 +372,21 @@ export function OpsTab({
 
   const zoneLabel = quotes[0]?.zone
     ? `Treasury ${quotes[0].zone} · ×${fmtToken(quotes[0].multiplier)}`
+    : null;
+
+  const revengePreview = lastHit
+    ? buildStrikeRevengeText({
+        weaponId: lastHit.weaponId,
+        referralLink,
+      })
+    : null;
+  const flexPreview = lastHit
+    ? buildStrikeFlexText({
+        weaponId: lastHit.weaponId,
+        victimLabel: lastHit.victimLabel,
+        glory: lastHit.glory,
+        referralLink,
+      })
     : null;
 
   return (
@@ -570,6 +645,50 @@ export function OpsTab({
               </button>
             </div>
 
+            {/* After HIT — taunt / flex */}
+            {lastHit && (
+              <div className="rounded-2xl border border-emerald-500/30 bg-emerald-950/20 p-4">
+                <div className="mb-2 text-xs font-black uppercase tracking-widest text-emerald-300">
+                  Last hit · {lastHit.victimLabel} · +{lastHit.glory} glory
+                </div>
+                <p className="mb-3 text-[0.65rem] leading-relaxed text-zinc-400">
+                  Telegram cannot force a DM. Use{" "}
+                  <strong className="text-zinc-200">Send revenge</strong> and
+                  pick their chat, or{" "}
+                  <strong className="text-zinc-200">Flex in group</strong> and
+                  pick @waronnations.
+                </p>
+                {revengePreview && (
+                  <pre className="mb-2 max-h-24 overflow-auto whitespace-pre-wrap rounded-xl border border-zinc-800 bg-zinc-950/80 p-2 text-[0.6rem] text-zinc-400">
+                    {revengePreview}
+                  </pre>
+                )}
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    onClick={() => shareRevenge(lastHit)}
+                    className="flex items-center justify-center gap-2 rounded-xl border border-red-500/40 bg-red-950/40 py-3 text-xs font-black uppercase tracking-wider text-red-200"
+                  >
+                    <MessageCircle className="h-3.5 w-3.5" />
+                    Send revenge
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => shareFlex(lastHit)}
+                    className="flex items-center justify-center gap-2 rounded-xl border border-amber-500/40 bg-amber-950/40 py-3 text-xs font-black uppercase tracking-wider text-amber-200"
+                  >
+                    <Megaphone className="h-3.5 w-3.5" />
+                    Flex in group
+                  </button>
+                </div>
+                {flexPreview && (
+                  <pre className="mt-2 max-h-24 overflow-auto whitespace-pre-wrap rounded-xl border border-zinc-800 bg-zinc-950/80 p-2 text-[0.6rem] text-zinc-500">
+                    {flexPreview}
+                  </pre>
+                )}
+              </div>
+            )}
+
             {/* Personal history */}
             <div>
               <div className="mb-2 flex items-center gap-2 px-1">
@@ -615,7 +734,7 @@ export function OpsTab({
               )}
             </div>
 
-            {/* Rally / share — end of OPS */}
+            {/* Rally the pack */}
             <div className="rounded-2xl border border-amber-500/30 bg-gradient-to-br from-amber-950/40 to-zinc-900 p-4">
               <div className="mb-2 flex items-center gap-2">
                 <Users className="h-4 w-4 text-amber-400" />
@@ -624,7 +743,7 @@ export function OpsTab({
                 </h3>
               </div>
               <p className="mb-3 text-[0.7rem] leading-relaxed text-zinc-400">
-                Share your recruit link or jump into the official group. Recruits
+                Share your recruit link or open the official group. Recruits
                 that play count toward referral rewards.
               </p>
               {referralCode ? (

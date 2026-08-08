@@ -195,3 +195,63 @@ export function shareReferralInvite(referralLink: string, extraText?: string) {
 
   shareUrl(referralLink, text);
 }
+
+/** knife → stabbed · guns → shot */
+export function battlefieldVerb(weaponId: string): "stabbed" | "shot" {
+  return weaponId === "knife" ? "stabbed" : "shot";
+}
+
+/**
+ * DM / personal taunt — “get your revenge”
+ * Player picks the victim in the Telegram share sheet.
+ */
+export function buildStrikeRevengeText(opts: {
+  weaponId: string;
+  referralLink: string;
+}): string {
+  const verb = battlefieldVerb(opts.weaponId);
+  return [
+    `⚔️ Just ${verb} you in War On Nations.`,
+    "",
+    "Join me and get your revenge:",
+    opts.referralLink,
+  ].join("\n");
+}
+
+/**
+ * Public flex for @waronnations / any chat
+ * Includes victim label + glory scored.
+ */
+export function buildStrikeFlexText(opts: {
+  weaponId: string;
+  victimLabel: string;
+  glory: number;
+  referralLink: string;
+}): string {
+  const verb = battlefieldVerb(opts.weaponId);
+  const who = opts.victimLabel.trim() || "a soldier";
+  return [
+    `⚔️ Just ${verb} ${who} in War On Nations and scored ${opts.glory} glory.`,
+    "",
+    "Think you can do better?",
+    opts.referralLink,
+  ].join("\n");
+}
+
+/** Open share sheet with revenge (DM) copy */
+export function shareStrikeRevenge(opts: {
+  weaponId: string;
+  referralLink: string;
+}) {
+  shareUrl(opts.referralLink, buildStrikeRevengeText(opts));
+}
+
+/** Open share sheet with flex (group) copy */
+export function shareStrikeFlex(opts: {
+  weaponId: string;
+  victimLabel: string;
+  glory: number;
+  referralLink: string;
+}) {
+  shareUrl(opts.referralLink, buildStrikeFlexText(opts));
+}
