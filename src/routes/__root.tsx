@@ -1,0 +1,188 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  Outlet,
+  Link,
+  createRootRouteWithContext,
+  useRouter,
+  HeadContent,
+  Scripts,
+  ClientOnly,
+} from "@tanstack/react-router";
+import { Suspense, lazy, useEffect, type ReactNode } from "react";
+
+import appCss from "../styles.css?url";
+import { reportLovableError } from "../lib/lovable-error-reporting";
+import { initMonitoring, captureException } from "../lib/monitoring";
+import { trackOnce } from "../lib/analytics";
+import { AppErrorBoundary } from "../components/ErrorBoundary";
+
+const TonConnectProvider = lazy(() => import("@/components/TonConnectProvider"));
+
+function NotFoundComponent() {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-background px-4">
+      <div className="max-w-md text-center">
+        <h1 className="text-7xl font-bold text-foreground">404</h1>
+        <h2 className="mt-4 text-xl font-semibold text-foreground">Page not found</h2>
+        <p className="mt-2 text-sm text-muted-foreground">
+          The page you're looking for doesn't exist or has been moved.
+        </p>
+        <div className="mt-6">
+          <Link
+            to="/"
+            className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+          >
+            Go home
+          </Link>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
+  console.error(error);
+  const router = useRouter();
+  useEffect(() => {
+    reportLovableError(error, { boundary: "tanstack_root_error_component" });
+    captureException(error, { boundary: "tanstack_root_error_component" });
+  }, [error]);
+
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-background px-4">
+      <div className="max-w-md text-center">
+        <h1 className="text-xl font-semibold tracking-tight text-foreground">
+          This page didn't load
+        </h1>
+        <p className="mt-2 text-sm text-muted-foreground">
+          Something went wrong on our end. You can try refreshing or head back home.
+        </p>
+        <div className="mt-6 flex flex-wrap justify-center gap-2">
+          <button
+            onClick={() => {
+              router.invalidate();
+              reset();
+            }}
+            className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+          >
+            Try again
+          </button>
+          <a
+            href="/"
+            className="inline-flex items-center justify-center rounded-md border border-input bg-background px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent"
+          >
+            Go home
+          </a>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
+  head: () => ({
+    meta: [
+      { charSet: "utf-8" },
+      { name: "viewport", content: "width=device-width, initial-scale=1, viewport-fit=cover" },
+      { name: "theme-color", content: "#0a0a0f" },
+      { title: "War On Nations — Merge. Build. Conquer. Feed the Pack." },
+      {
+        name: "description",
+        content:
+          "WAR On Nations is a Telegram merge game. Fuse WARDOG and WARCAT units, earn $WARDOG & $WARCAT, and rise from Private to Warlord.",
+      },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary_large_image" },
+      { property: "og:title", content: "War On Nations — Merge. Build. Conquer. Feed the Pack." },
+      { name: "twitter:title", content: "War On Nations — Merge. Build. Conquer. Feed the Pack." },
+      {
+        property: "og:description",
+        content:
+          "WAR On Nations is a Telegram merge game. Fuse WARDOG and WARCAT units, earn $WARDOG & $WARCAT, and rise from Private to Warlord.",
+      },
+      {
+        name: "twitter:description",
+        content:
+          "WAR On Nations is a Telegram merge game. Fuse WARDOG and WARCAT units, earn $WARDOG & $WARCAT, and rise from Private to Warlord.",
+      },
+      {
+        property: "og:image",
+        content:
+          "https://storage.googleapis.com/gpt-engineer-file-uploads/3zlDZO87srgFwoVrILtB4VY8Xg52/social-images/social-1784777605415-1418.webp",
+      },
+      {
+        name: "twitter:image",
+        content:
+          "https://storage.googleapis.com/gpt-engineer-file-uploads/3zlDZO87srgFwoVrILtB4VY8Xg52/social-images/social-1784777605415-1418.webp",
+      },
+    ],
+    links: [
+      { rel: "stylesheet", href: appCss },
+      { rel: "icon", href: "/favicon.ico", type: "image/x-icon" },
+    ],
+    scripts: [{ src: "https://telegram.org/js/telegram-web-app.js", async: true }],
+  }),
+  shellComponent: RootShell,
+  component: RootComponent,
+  notFoundComponent: NotFoundComponent,
+  errorComponent: ErrorComponent,
+});
+
+function RootShell({ children }: { children: ReactNode }) {
+  return (
+    <html
+      lang="en"
+      // Suppress Telegram WebApp hydration mismatch on style
+      suppressHydrationWarning
+    >
+      <head>
+        <HeadContent />
+      </head>
+      <body>
+        {children}
+        <Scripts />
+      </body>
+    </html>
+  );
+}
+
+function RootComponent() {
+  const { queryClient } = Route.useRouteContext();
+
+  useEffect(() => {
+    initMonitoring();
+    trackOnce("first_open");
+  }, []);
+
+  return (
+    <QueryClientProvider client={queryClient}>
+      {/*
+        IMPORTANT: Do NOT render <Outlet /> in ClientOnly/Suspense fallbacks.
+        Routes that call useTonAddress / useTonConnectUI would crash without
+        TonConnectUIProvider (TonConnectProviderNotSetError).
+      */}
+      <ClientOnly
+        fallback={
+          <div className="flex min-h-screen items-center justify-center bg-zinc-950 text-zinc-400">
+            Loading…
+          </div>
+        }
+      >
+        <Suspense
+          fallback={
+            <div className="flex min-h-screen items-center justify-center bg-zinc-950 text-zinc-400">
+              Loading…
+            </div>
+          }
+        >
+          <AppErrorBoundary>
+            <TonConnectProvider>
+              {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
+              <Outlet />
+            </TonConnectProvider>
+          </AppErrorBoundary>
+        </Suspense>
+      </ClientOnly>
+    </QueryClientProvider>
+  );
+}

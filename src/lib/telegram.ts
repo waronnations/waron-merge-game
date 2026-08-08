@@ -1,0 +1,257 @@
+export interface TelegramUser {
+  id: number;
+  first_name?: string;
+  last_name?: string;
+  username?: string;
+  language_code?: string;
+  photo_url?: string;
+  is_premium?: boolean;
+}
+
+export interface TelegramWebApp {
+  ready: () => void;
+  expand: () => void;
+  close?: () => void;
+  setHeaderColor?: (color: string) => void;
+  setBackgroundColor?: (color: string) => void;
+  disableVerticalSwipes?: () => void;
+  enableClosingConfirmation?: () => void;
+  isVerticalSwipesEnabled?: boolean;
+  HapticFeedback?: {
+    impactOccurred: (
+      style: "light" | "medium" | "heavy" | "rigid" | "soft",
+    ) => void;
+  };
+  /** Bot API 6.1+ — open t.me links inside Telegram */
+  openTelegramLink?: (url: string) => void;
+  /** Bot API 6.1+ — open external links */
+  openLink?: (url: string, options?: { try_instant_view?: boolean }) => void;
+  initData: string;
+  initDataUnsafe: {
+    user?: TelegramUser;
+    start_param?: string;
+    auth_date?: number;
+    hash?: string;
+    query_id?: string;
+  };
+  themeParams?: Record<string, string>;
+  platform?: string;
+  version?: string;
+}
+
+declare global {
+  interface Window {
+    Telegram?: { WebApp?: TelegramWebApp };
+  }
+}
+
+export function getTelegram(): TelegramWebApp | null {
+  if (typeof window === "undefined") return null;
+  return window.Telegram?.WebApp ?? null;
+}
+
+export function initTelegram(): TelegramWebApp | null {
+  const tg = getTelegram();
+  if (!tg) return null;
+  try {
+    tg.ready();
+    tg.expand();
+
+    if (webAppVersion() >= 6.1) {
+      tg.setHeaderColor?.("#0a0a0f");
+      tg.setBackgroundColor?.("#0a0a0f");
+    }
+
+    // Bot API 7.7+ — stop vertical swipe from stealing board drags
+    if (webAppVersion() >= 7.7) {
+      tg.disableVerticalSwipes?.();
+    }
+  } catch {
+    /* ignore */
+  }
+  return tg;
+}
+
+/** Telegram WebApp version as a number (0 when unavailable). */
+export function webAppVersion(): number {
+  const v = parseFloat(String(getTelegram()?.version ?? "0"));
+  return Number.isFinite(v) ? v : 0;
+}
+
+export function haptic(kind: "light" | "medium" | "heavy" = "light") {
+  if (webAppVersion() < 6.1) return;
+  try {
+    getTelegram()?.HapticFeedback?.impactOccurred(kind);
+  } catch {
+    /* ignore */
+  }
+}
+
+export function tgUser(): TelegramUser | null {
+  return getTelegram()?.initDataUnsafe?.user ?? null;
+}
+
+export function getStartParam(): string | null {
+  const tg = getTelegram();
+
+  if (tg?.initDataUnsafe?.start_param) {
+    return tg.initDataUnsafe.start_param;
+  }
+
+  if (typeof window !== "undefined") {
+    const search = new URLSearchParams(window.location.search);
+    const fromSearch =
+      search.get("tgWebAppStartParam") ||
+      search.get("startapp") ||
+      search.get("start") ||
+      search.get("ref");
+    if (fromSearch) return fromSearch;
+
+    const hash = window.location.hash.slice(1);
+    const hashParams = new URLSearchParams(hash);
+    const fromHash =
+      hashParams.get("tgWebAppStartParam") ||
+      hashParams.get("startapp") ||
+      hashParams.get("start");
+    if (fromHash) return fromHash;
+  }
+
+  return null;
+}
+
+export function getInitData(): string | null {
+  const data = getTelegram()?.initData;
+  return data && data.length > 0 ? data : null;
+}
+
+/**
+ * Share a URL + text via Telegram's native share sheet.
+ * Prefer openTelegramLink (Mini App) over window.open (often blocked).
+ */
+export function shareUrl(url: string, text: string) {
+  if (typeof window === "undefined") return;
+
+  const share = `https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(text)}`;
+  const tg = getTelegram();
+
+  try {
+    if (tg?.openTelegramLink && webAppVersion() >= 6.1) {
+      tg.openTelegramLink(share);
+      return;
+    }
+    if (tg?.openLink) {
+      tg.openLink(share);
+      return;
+    }
+    window.open(share, "_blank", "noopener,noreferrer");
+  } catch {
+    window.location.href = share;
+  }
+}
+
+/** Official community group / channel */
+export const WARON_COMMUNITY = "https://t.me/waronnations";
+
+/**
+ * Open any t.me link inside Telegram (Mini App-safe).
+ */
+export function openTelegramUrl(url: string) {
+  if (typeof window === "undefined") return;
+  const tg = getTelegram();
+  try {
+    if (tg?.openTelegramLink && webAppVersion() >= 6.1) {
+      tg.openTelegramLink(url);
+      return;
+    }
+    if (tg?.openLink) {
+      tg.openLink(url);
+      return;
+    }
+    window.open(url, "_blank", "noopener,noreferrer");
+  } catch {
+    window.location.href = url;
+  }
+}
+
+/** Open the War On Nations Telegram group / channel */
+export function openWaronCommunity() {
+  openTelegramUrl(WARON_COMMUNITY);
+}
+
+/**
+ * Open Telegram share sheet with referral link + message.
+ */
+export function shareReferralInvite(referralLink: string, extraText?: string) {
+  const text =
+    extraText?.trim() ||
+    [
+      "⚔️ WAR ON NATIONS is live.",
+      "",
+      "Merge WARDOG & WARCAT. Claim countries. Feed the treasury.",
+      "",
+      "Join my squad (open inside Telegram):",
+      referralLink,
+    ].join("\n");
+
+  shareUrl(referralLink, text);
+}
+
+/** knife → stabbed · guns → shot */
+export function battlefieldVerb(weaponId: string): "stabbed" | "shot" {
+  return weaponId === "knife" ? "stabbed" : "shot";
+}
+
+/**
+ * DM / personal taunt — “get your revenge”
+ * Player picks the victim in the Telegram share sheet.
+ */
+export function buildStrikeRevengeText(opts: {
+  weaponId: string;
+  referralLink: string;
+}): string {
+  const verb = battlefieldVerb(opts.weaponId);
+  return [
+    `⚔️ Just ${verb} you in War On Nations.`,
+    "",
+    "Join me and get your revenge:",
+    opts.referralLink,
+  ].join("\n");
+}
+
+/**
+ * Public flex for @waronnations / any chat
+ * Includes victim label + glory scored.
+ */
+export function buildStrikeFlexText(opts: {
+  weaponId: string;
+  victimLabel: string;
+  glory: number;
+  referralLink: string;
+}): string {
+  const verb = battlefieldVerb(opts.weaponId);
+  const who = opts.victimLabel.trim() || "a soldier";
+  return [
+    `⚔️ Just ${verb} ${who} in War On Nations and scored ${opts.glory} glory.`,
+    "",
+    "Think you can do better?",
+    opts.referralLink,
+  ].join("\n");
+}
+
+/** Open share sheet with revenge (DM) copy */
+export function shareStrikeRevenge(opts: {
+  weaponId: string;
+  referralLink: string;
+}) {
+  shareUrl(opts.referralLink, buildStrikeRevengeText(opts));
+}
+
+/** Open share sheet with flex (group) copy */
+export function shareStrikeFlex(opts: {
+  weaponId: string;
+  victimLabel: string;
+  glory: number;
+  referralLink: string;
+}) {
+  shareUrl(opts.referralLink, buildStrikeFlexText(opts));
+}
