@@ -11,10 +11,13 @@
  *
  *   HR = (onChainWardog + onChainWarcat) / totalOutstandingClaimable
  *
- *   Green    HR >= 1.50            → x1.0
- *   Yellow   1.20 <= HR < 1.50     → 1.5 + (1.50 - HR) / 0.30 * 0.5
- *   Red      1.00 <= HR < 1.20     → 2.5 + (1.20 - HR) / 0.20 * 1.5
- *   Critical HR < 1.00             → x5.0
+ *   Green    HR >= 1.50            → max(x1.0, PROTOCOL_TAX_MULT_FLOOR)
+ *   Yellow   1.20 <= HR < 1.50     → max(curve, floor)
+ *   Red      1.00 <= HR < 1.20     → max(curve, floor)
+ *   Critical HR < 1.00             → max(x5.0, floor)
+ *
+ * PROTOCOL_TAX_MULT_FLOOR (1.05) guarantees every paid action always pays
+ * at least +5% tax, even in green. Merge board stays free (energy only).
  *
  * ON-CHAIN SOURCE OF TRUTH
  * ------------------------
@@ -33,6 +36,18 @@ import { readOnChainTreasuryBalances } from "@/lib/onchain/treasury-balance.serv
 
 /** Treasury address surfaced to the UI. */
 export const CLAIM_TREASURY_ADDRESS = CLAIM_TREASURY.address;
+
+/**
+ * Minimum multiplier applied to every taxable fee (shop, recover, vault,
+ * marketplace, battlefield, …). Green can never zero-out tax.
+ * 1.05 = always +5% on base price. Zone curve only raises this.
+ */
+export const PROTOCOL_TAX_MULT_FLOOR = 1.05;
+
+/** Percent label for UI (e.g. "5% protocol tax"). */
+export const PROTOCOL_TAX_FLOOR_PCT = Math.round(
+  (PROTOCOL_TAX_MULT_FLOOR - 1) * 100,
+);
 
 function envNumber(name: string, fallback: number): number {
   const raw = process.env[name];
@@ -103,13 +118,21 @@ export interface TreasuryHealth {
   updatedAt: number;
 }
 
-/** Exact linear interpolation from the economy spec. */
+/**
+ * Zone curve from the economy spec (before protocol floor).
+ * Infinite / healthy HR returns 1.0; floor is applied in getTreasuryHealth.
+ */
 export function taxMultiplierForRatio(hr: number): number {
   if (!Number.isFinite(hr)) return 1;
   if (hr >= 1.5) return 1.0;
   if (hr >= 1.2) return 1.5 + ((1.5 - hr) / 0.3) * 0.5;
   if (hr >= 1.0) return 2.5 + ((1.2 - hr) / 0.2) * 1.5;
   return 5.0;
+}
+
+/** Effective multiplier = max(zone curve, protocol floor). */
+export function effectiveTaxMultiplier(hr: number): number {
+  return Math.max(taxMultiplierForRatio(hr), PROTOCOL_TAX_MULT_FLOOR);
 }
 
 export function zoneForRatio(hr: number): TreasuryZone {
@@ -155,17 +178,21 @@ export async function getTreasuryHealth(
 
   const balance = normalizeToken(wardog + warcat);
   // With nothing outstanding the pool is trivially healthy.
-  const healthRatio = outstanding <= 0 ? Number.POSITIVE_INFINITY : balance / outstanding;
+  const healthRatio =
+    outstanding <= 0 ? Number.POSITIVE_INFINITY : balance / outstanding;
   const displayRatio = Number.isFinite(healthRatio)
     ? Math.round(healthRatio * 1000) / 1000
     : 999;
+
+  const taxMultiplier =
+    Math.round(effectiveTaxMultiplier(healthRatio) * 1000) / 1000;
 
   const value: TreasuryHealth = {
     balanceWardog: normalizeToken(wardog),
     balanceWarcat: normalizeToken(warcat),
     totalClaimable: outstanding,
     healthRatio: displayRatio,
-    taxMultiplier: Math.round(taxMultiplierForRatio(healthRatio) * 1000) / 1000,
+    taxMultiplier,
     zone: zoneForRatio(healthRatio),
     updatedAt: now,
   };
@@ -178,10 +205,12 @@ export async function getTreasuryHealth(
  * Applies the live treasury multiplier to a base FEE / COST.
  *
  * MUST be used by every taxable economic action (shop, energy recovery,
- * vault donations, marketplace purchases, protection, redemption, …) so the
- * economy self-regulates instead of leaking tokens.
+ * vault donations, marketplace purchases, protection, redemption,
+ * battlefield weapon buys, …) so the economy self-regulates.
  *
- * Returns the final amount the user actually pays.
+ * Returns the final amount the user actually pays (base × mult ≥ base × floor).
+ *
+ * NOT used on: merge / spawn / swap (energy only) or passive energy regen.
  */
 export async function applyDynamicTax(
   baseAmount: number,
@@ -281,10 +310,26 @@ export const CLAIM_ZONE_RULES: Record<
   TreasuryZone,
   { fraction: number; dailyCap: number; note: string }
 > = {
-  green: { fraction: 1, dailyCap: Number.POSITIVE_INFINITY, note: "Full claims open." },
-  yellow: { fraction: 1, dailyCap: 5_000, note: "Full claims, daily cap applies." },
-  red: { fraction: 0.25, dailyCap: 1_000, note: "Partial claims only (25%)." },
-  critical: { fraction: 0, dailyCap: 0, note: "Claims paused while the pool refills." },
+  green: {
+    fraction: 1,
+    dailyCap: Number.POSITIVE_INFINITY,
+    note: "Full claims open.",
+  },
+  yellow: {
+    fraction: 1,
+    dailyCap: 5_000,
+    note: "Full claims, daily cap applies.",
+  },
+  red: {
+    fraction: 0.25,
+    dailyCap: 1_000,
+    note: "Partial claims only (25%).",
+  },
+  critical: {
+    fraction: 0,
+    dailyCap: 0,
+    note: "Claims paused while the pool refills.",
+  },
 };
 
 export const MIN_TREASURY_CLAIM = 10;
@@ -316,12 +361,22 @@ export async function claimTokens(
   const rules = CLAIM_ZONE_RULES[health.zone];
 
   if (rules.fraction <= 0) {
-    return { ok: false, error: "claims_paused", zone: health.zone, note: rules.note };
+    return {
+      ok: false,
+      error: "claims_paused",
+      zone: health.zone,
+      note: rules.note,
+    };
   }
 
-  const userRes = await sql`SELECT wallet_address FROM users WHERE id = ${userId} LIMIT 1`;
-  const walletAddress = (userRes.rows[0]?.wallet_address as string | null) ?? null;
-  if (!walletAddress) return { ok: false, error: "wallet_not_linked", zone: health.zone };
+  const userRes = await sql`
+    SELECT wallet_address FROM users WHERE id = ${userId} LIMIT 1
+  `;
+  const walletAddress =
+    (userRes.rows[0]?.wallet_address as string | null) ?? null;
+  if (!walletAddress) {
+    return { ok: false, error: "wallet_not_linked", zone: health.zone };
+  }
 
   const progRes = await sql`
     SELECT wardog_tokens, warcat_tokens,
@@ -338,7 +393,12 @@ export async function claimTokens(
       : Number(prog.warcat_tokens) - Number(prog.claimed_warcat),
   );
   if (available < MIN_TREASURY_CLAIM) {
-    return { ok: false, error: "below_minimum", zone: health.zone, remaining: available };
+    return {
+      ok: false,
+      error: "below_minimum",
+      zone: health.zone,
+      remaining: available,
+    };
   }
 
   // How much was already claimed in the last 24h (zone daily cap).
@@ -353,11 +413,21 @@ export async function claimTokens(
     ? Math.max(0, rules.dailyCap - claimedToday)
     : Number.POSITIVE_INFINITY;
   if (capRoom <= 0) {
-    return { ok: false, error: "daily_cap_reached", zone: health.zone, note: rules.note };
+    return {
+      ok: false,
+      error: "daily_cap_reached",
+      zone: health.zone,
+      note: rules.note,
+    };
   }
 
-  const desired = requestedAmount && requestedAmount > 0 ? Math.min(requestedAmount, available) : available;
-  const amount = normalizeToken(Math.min(desired * rules.fraction, capRoom, available));
+  const desired =
+    requestedAmount && requestedAmount > 0
+      ? Math.min(requestedAmount, available)
+      : available;
+  const amount = normalizeToken(
+    Math.min(desired * rules.fraction, capRoom, available),
+  );
   if (amount < MIN_TREASURY_CLAIM) {
     return {
       ok: false,
@@ -373,14 +443,16 @@ export async function claimTokens(
     token === "wardog"
       ? await sql`
           UPDATE progress
-             SET claimed_wardog = COALESCE(claimed_wardog, 0) + ${amount}, updated_at = NOW()
+             SET claimed_wardog = COALESCE(claimed_wardog, 0) + ${amount},
+                 updated_at = NOW()
            WHERE user_id = ${userId}
              AND wardog_tokens - COALESCE(claimed_wardog, 0) >= ${amount}
            RETURNING wardog_tokens, claimed_wardog
         `
       : await sql`
           UPDATE progress
-             SET claimed_warcat = COALESCE(claimed_warcat, 0) + ${amount}, updated_at = NOW()
+             SET claimed_warcat = COALESCE(claimed_warcat, 0) + ${amount},
+                 updated_at = NOW()
            WHERE user_id = ${userId}
              AND warcat_tokens - COALESCE(claimed_warcat, 0) >= ${amount}
            RETURNING warcat_tokens, claimed_warcat
