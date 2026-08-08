@@ -6,7 +6,7 @@ import type { GameState } from "@/lib/game-state";
 import { haptic } from "@/lib/telegram";
 import { RewardLine } from "./RewardLine";
 import { ClaimBurst } from "@/components/game/ClaimBurst";
-import { GIFT_BOXES, GIFT_CLOSED_VARIANTS } from "@/lib/constants/gifts";
+import { GIFT_CLOSED_VARIANTS } from "@/lib/constants/gifts";
 import type { GiftBoxId } from "@/lib/constants/gifts";
 
 function pickClosedImg(id: GiftBoxId = "common") {
@@ -26,7 +26,7 @@ export function DailyQuestsPanel({
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between px-1">
-        <h3 className="text-xs font-black uppercase tracking-widest text-zinc-500">
+        <h3 className="text-xs font-black uppercase tracking-widest text-zinc-400">
           Daily Ops
         </h3>
         <div className="text-[0.6rem] uppercase tracking-widest text-zinc-600">
@@ -35,7 +35,7 @@ export function DailyQuestsPanel({
       </div>
 
       {!state.dailyQuests.length && (
-        <div className="rounded-2xl border border-zinc-700 bg-zinc-900 p-6 text-center text-sm text-zinc-500">
+        <div className="rounded-2xl border border-zinc-800 bg-black p-6 text-center text-sm text-zinc-500">
           New daily ops incoming — check back shortly.
         </div>
       )}
@@ -50,23 +50,22 @@ export function DailyQuestsPanel({
             key={q.id}
             className={`rounded-2xl border p-2.5 ${
               q.claimed
-                ? "border-zinc-700 bg-zinc-900/60 opacity-80"
+                ? "border-zinc-800 bg-zinc-950/60 opacity-80"
                 : "border-zinc-700 bg-zinc-900"
             }`}
           >
             <div className="flex items-center gap-2.5">
-              {/* Gift icon square – smaller */}
               <div
                 className={`grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-xl ${
                   q.claimed
-                    ? "bg-emerald-900/50"
+                    ? "bg-white/10"
                     : ready
-                      ? "bg-amber-500/20 ring-1 ring-amber-400/60"
+                      ? "bg-white/15 ring-1 ring-white/50"
                       : "bg-zinc-800"
                 }`}
               >
                 {q.claimed ? (
-                  <Check className="h-5 w-5 text-emerald-400" />
+                  <Check className="h-5 w-5 text-white" />
                 ) : (
                   <img
                     src={closedSrc}
@@ -96,7 +95,7 @@ export function DailyQuestsPanel({
                   try {
                     await onClaim(q.id);
                     haptic("medium");
-                    setBurstGift("common"); // trigger animation
+                    setBurstGift("common");
                     toast.success("Daily ops claimed — supply drop incoming!");
                   } catch {
                     // error already handled inside onClaim
@@ -104,9 +103,9 @@ export function DailyQuestsPanel({
                 }}
                 className={`min-h-[2.25rem] shrink-0 rounded-xl px-3 py-1.5 text-[0.65rem] font-bold uppercase tracking-wider ${
                   q.claimed
-                    ? "bg-emerald-900/40 text-emerald-400 cursor-default"
+                    ? "bg-white/10 text-white cursor-default"
                     : ready
-                      ? "bg-amber-500 text-black"
+                      ? "bg-white text-black"
                       : "bg-zinc-800 text-zinc-500 cursor-not-allowed"
                 }`}
               >
@@ -118,11 +117,10 @@ export function DailyQuestsPanel({
               </button>
             </div>
 
-            {/* thinner progress bar */}
             <div className="mt-2 h-1 overflow-hidden rounded-full bg-zinc-800">
               <div
                 className={`h-full rounded-full transition-all ${
-                  q.claimed ? "bg-emerald-500" : "bg-amber-500"
+                  q.claimed ? "bg-white" : "bg-white/80"
                 }`}
                 style={{ width: `${pct}%` }}
               />
@@ -131,7 +129,6 @@ export function DailyQuestsPanel({
         );
       })}
 
-      {/* Claim animation overlay */}
       {burstGift && (
         <ClaimBurst
           giftId={burstGift}

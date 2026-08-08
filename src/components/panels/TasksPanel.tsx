@@ -1,7 +1,7 @@
 // src/components/panels/TasksPanel.tsx
 import { useState } from "react";
 import { toast } from "sonner";
-import { Check, Circle } from "lucide-react";
+import { Check } from "lucide-react";
 import type { GameState } from "@/lib/game-state";
 import { haptic } from "@/lib/telegram";
 import { RewardLine } from "./RewardLine";
@@ -26,7 +26,7 @@ export function TasksPanel({
   return (
     <div className="space-y-2">
       {!state.tasks.length && (
-        <div className="rounded-2xl border border-zinc-700 bg-zinc-900 p-6 text-center text-sm text-zinc-500">
+        <div className="rounded-2xl border border-zinc-800 bg-black p-6 text-center text-sm text-zinc-500">
           All missions complete, soldier. Stand by for new orders.
         </div>
       )}
@@ -46,14 +46,14 @@ export function TasksPanel({
             <div
               className={`grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-xl ${
                 claimed
-                  ? "bg-emerald-900/50"
+                  ? "bg-white/10"
                   : t.done
-                    ? "bg-amber-500/20 ring-1 ring-amber-400/60"
+                    ? "bg-white/15 ring-1 ring-white/50"
                     : "bg-zinc-800"
               }`}
             >
               {claimed || t.done ? (
-                <Check className="h-5 w-5 text-emerald-400" />
+                <Check className="h-5 w-5 text-white" />
               ) : (
                 <img
                   src={closedSrc}
@@ -90,9 +90,9 @@ export function TasksPanel({
               }}
               className={`min-h-[2.25rem] shrink-0 rounded-xl px-3 py-1.5 text-[0.65rem] font-bold uppercase tracking-wider ${
                 claimed
-                  ? "bg-emerald-900/40 text-emerald-400 cursor-default"
+                  ? "bg-white/10 text-white cursor-default"
                   : canClaim
-                    ? "bg-amber-500 text-black"
+                    ? "bg-white text-black"
                     : "bg-zinc-800 text-zinc-500 cursor-not-allowed"
               }`}
             >

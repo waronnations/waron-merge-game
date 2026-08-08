@@ -80,8 +80,6 @@ export function sanitizeBoard(board: unknown): (Cell | null)[] {
   }
 
   // ── SIDE FIX (position-preserving) ────────────────────────────────
-  // Never move cells. Only correct the faction so the board stays exactly
-  // where the player left it. This eliminates the rearrange-on-reopen bug.
   for (let i = 0; i < size; i++) {
     const cell = out[i];
     if (!cell || cell.faction === "hybrid") continue;
@@ -135,75 +133,16 @@ export function makeInitialBoard(): (Cell | null)[] {
   return board;
 }
 
+// ── One-time tasks removed ──────────────────────────────────────────
 export function defaultTasks(): Task[] {
-  return [
-    {
-      id: "merge10",
-      title: "Battlefield Warmup",
-      desc: "Perform 10 merges",
-      reward: 100,
-      done: false,
-      claimed: false,
-    },
-    {
-      id: "merge50",
-      title: "Frontline Push",
-      desc: "Perform 50 merges",
-      reward: 500,
-      wardog: 5,
-      done: false,
-      claimed: false,
-    },
-    {
-      id: "reachT3",
-      title: "Elite Command",
-      desc: "Reach a Tier 3 unit",
-      reward: 300,
-      warcat: 3,
-      done: false,
-      claimed: false,
-    },
-    {
-      id: "reachT4",
-      title: "Armored Division",
-      desc: "Reach a Tier 4 unit",
-      reward: 800,
-      wardog: 10,
-      done: false,
-      claimed: false,
-    },
-    {
-      id: "reachT5",
-      title: "Legendary Deployment",
-      desc: "Forge a Tier 5 unit",
-      reward: 2500,
-      wardog: 25,
-      warcat: 25,
-      done: false,
-      claimed: false,
-    },
-    {
-      id: "daily3",
-      title: "Loyal Soldier",
-      desc: "Claim 3 daily bonuses",
-      reward: 600,
-      warcat: 5,
-      done: false,
-      claimed: false,
-    },
-  ];
+  return [];
 }
 
-export function normalizeTasks(tasks: Task[] | undefined | null): Task[] {
-  const base = defaultTasks();
-  if (!tasks?.length) return base;
-  return base.map((def) => {
-    const t = tasks.find((x) => x.id === def.id);
-    if (!t) return def;
-    return { ...def, ...t, done: !!t.done, claimed: !!t.claimed };
-  });
+export function normalizeTasks(_tasks: Task[] | undefined | null): Task[] {
+  return [];
 }
 
+// ── Only 3 Daily Ops ────────────────────────────────────────────────
 export const DAILY_QUEST_POOL: Omit<DailyQuest, "progress" | "claimed">[] = [
   {
     id: "dq_merge15",
@@ -222,18 +161,9 @@ export const DAILY_QUEST_POOL: Omit<DailyQuest, "progress" | "claimed">[] = [
     warcat: 3,
   },
   {
-    id: "dq_tier4",
-    title: "Tier Push",
-    desc: "Forge a Tier 4 unit today",
-    target: 1,
-    reward: 500,
-    wardog: 5,
-    warcat: 2,
-  },
-  {
     id: "dq_spawn10",
-    title: "Deploy Recruits",
-    desc: "Deploy 10 recruits today",
+    title: "Deploy Weapons",
+    desc: "Deploy 10 weapons today",
     target: 10,
     reward: 250,
     energy: 15,
@@ -250,10 +180,13 @@ export function mulberry32(a: number) {
   };
 }
 
-export function pickDailyQuests(seed: number): DailyQuest[] {
-  const rand = mulberry32(seed);
-  const pool = [...DAILY_QUEST_POOL].sort(() => rand() - 0.5);
-  return pool.slice(0, 3).map((q) => ({ ...q, progress: 0, claimed: false }));
+export function pickDailyQuests(_seed: number): DailyQuest[] {
+  // Always return the fixed 3 daily ops
+  return DAILY_QUEST_POOL.map((q) => ({
+    ...q,
+    progress: 0,
+    claimed: false,
+  }));
 }
 
 export function makeReferralCode(): string {
@@ -409,11 +342,22 @@ export function load(): GameState {
       merged.dailyQuests = pickDailyQuests(today);
       merged.dailyQuestsDate = today;
     } else {
-      merged.dailyQuests = merged.dailyQuests.map((q) => ({
-        ...q,
-        claimed: !!q.claimed,
-        progress: typeof q.progress === "number" ? q.progress : 0,
-      }));
+      // Keep only the 3 allowed daily ops (migrate old saves)
+      const allowedIds = new Set(DAILY_QUEST_POOL.map((q) => q.id));
+      const kept = merged.dailyQuests.filter((q) => allowedIds.has(q.id));
+      if (kept.length < 3) {
+        merged.dailyQuests = pickDailyQuests(today);
+      } else {
+        merged.dailyQuests = kept.map((q) => {
+          const def = DAILY_QUEST_POOL.find((d) => d.id === q.id)!;
+          return {
+            ...def,
+            progress: typeof q.progress === "number" ? q.progress : 0,
+            claimed: !!q.claimed,
+          };
+        });
+      }
+      merged.dailyQuestsDate = today;
     }
 
     merged.energy = clampEnergy(merged.energy);
@@ -440,25 +384,14 @@ export function save(state: GameState) {
 }
 
 export function updateTaskProgress(s: GameState): GameState {
-  const tasks = s.tasks.map((t) => {
-    if (t.claimed) return { ...t, done: true, claimed: true };
-    let done = t.done;
-    if (t.id === "merge10") done = s.totalMerges >= 10;
-    else if (t.id === "merge50") done = s.totalMerges >= 50;
-    else if (t.id === "reachT3") done = s.highestTier >= 3;
-    else if (t.id === "reachT4") done = s.highestTier >= 4;
-    else if (t.id === "reachT5") done = s.highestTier >= 5;
-    else if (t.id === "daily3") done = s.dailyStreak >= 3;
-    return done ? { ...t, done: true } : t;
-  });
-  return { ...s, tasks };
+  return { ...s, tasks: [] };
 }
 
 export function bumpDailyQuest(
   s: GameState,
   kind: "merge" | "spawn" | "tierUp",
   amount = 1,
-  tier = 0,
+  _tier = 0,
 ): GameState {
   const dailyQuests = s.dailyQuests.map((q) => {
     if (q.claimed) return q;
@@ -472,12 +405,6 @@ export function bumpDailyQuest(
       return {
         ...q,
         progress: Math.min(q.target, q.progress + amount),
-      };
-    }
-    if (kind === "tierUp" && q.id === "dq_tier4" && tier >= 4) {
-      return {
-        ...q,
-        progress: Math.min(q.target, q.progress + 1),
       };
     }
     return q;

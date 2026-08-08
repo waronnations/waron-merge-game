@@ -8,7 +8,7 @@ export const TAB_HERO: Record<PrimaryTab, { title: string; desc: string }> = {
   },
   ops: {
     title: "Daily operations",
-    desc: "Finish quests & missions, then tap CLAIM — rewards only pay when claimed.",
+    desc: "Finish the 3 daily ops, then tap CLAIM — rewards only pay when claimed.",
   },
   world: {
     title: "World theater",
