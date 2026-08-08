@@ -17,3 +17,4 @@ export * from "./constants/nations";
 export * from "./constants/payments";
 export * from "./constants/hybrid";
 export * from "./constants/notifications";
+export * from "./constants/battlefield";
