@@ -1,3 +1,4 @@
+// src/components/panels/ReferralPanel.tsx
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Copy, Users, RefreshCw } from "lucide-react";
@@ -120,13 +121,12 @@ export function ReferralPanel({
   const referralCount = status?.referralCount ?? 0;
   const rawCount = status?.rawReferralCount ?? 0;
   const recruits = status?.recentRecruits ?? [];
-  const minMerges =
-    status?.qualify?.minMerges ?? REFERRAL_QUALIFY_MIN_MERGES;
+  const minMerges = status?.qualify?.minMerges ?? REFERRAL_QUALIFY_MIN_MERGES;
   const minGlory = status?.qualify?.minGlory ?? REFERRAL_QUALIFY_MIN_GLORY;
 
   const shareText = useMemo(() => {
     return [
-      "⚔️ WAR ON NATIONS is live.",
+      "WAR ON NATIONS is live.",
       "",
       "Merge WARDOG & WARCAT units. Climb ranks. Earn $WARDOG & $WARCAT.",
       "Claim a country. Launch strategic nukes. Build your nation vault.",
@@ -152,7 +152,6 @@ export function ReferralPanel({
   };
 
   const shareTelegram = () => {
-    // Native Telegram share sheet with prefilled text + referral link
     shareUrl(link, shareText);
     haptic("medium");
   };
@@ -217,10 +216,11 @@ export function ReferralPanel({
 
   return (
     <div className="space-y-3 pb-6">
+      {/* Header / share */}
       <div className="rounded-2xl border border-zinc-700 bg-zinc-900 p-4">
         <div className="mb-3 flex items-center justify-between gap-2">
           <div className="flex min-w-0 items-center gap-2">
-            <Users className="h-5 w-5 shrink-0 text-amber-500" />
+            <Users className="h-5 w-5 shrink-0 text-white" />
             <h3 className="truncate text-sm font-black uppercase tracking-widest text-white">
               Recruit Command
             </h3>
@@ -242,100 +242,105 @@ export function ReferralPanel({
         </div>
 
         {error && (
-          <div className="mb-3 rounded-xl border border-red-500/40 bg-red-950/30 p-3 text-center text-xs text-red-300">
+          <div className="mb-3 rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-xs text-zinc-300">
             {error}
           </div>
         )}
 
-        <div className="mb-3 rounded-xl border border-amber-500/25 bg-amber-950/20 px-3 py-2 text-[0.65rem] leading-relaxed text-amber-200/90">
+        <p className="mb-3 text-[0.7rem] leading-relaxed text-zinc-400">
           Recruits count only after they play:{" "}
-          <strong>{minMerges}+ merges</strong> or{" "}
-          <strong>{minGlory}+ glory</strong>. Empty joins do not unlock
-          milestones.
+          <span className="text-white">
+            {minMerges}+ merges
+          </span>{" "}
+          or{" "}
+          <span className="text-white">
+            {minGlory}+ glory
+          </span>
+          . Empty joins do not unlock milestones.
+        </p>
+
+        <div className="mb-2 text-[0.6rem] font-bold uppercase tracking-wider text-zinc-500">
+          Your code
+        </div>
+        <div className="mb-3 flex items-center gap-2">
+          <div className="min-w-0 flex-1 truncate rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 font-mono text-sm text-white">
+            {code || "—"}
+          </div>
+          <button
+            type="button"
+            onClick={() => code && void copy(code, "Code")}
+            disabled={!code}
+            aria-label="Copy referral code"
+            className="shrink-0 rounded-lg bg-zinc-800 p-2 text-zinc-300 hover:bg-zinc-700 disabled:opacity-40"
+          >
+            <Copy className="h-4 w-4" />
+          </button>
         </div>
 
-        <div className="rounded-xl border border-zinc-700 bg-zinc-950 p-3">
-          <div className="text-[0.6rem] uppercase tracking-widest text-zinc-500">
-            Your code
+        <div className="mb-2 text-[0.6rem] font-bold uppercase tracking-wider text-zinc-500">
+          Invite link
+        </div>
+        <div className="mb-3 flex items-center gap-2">
+          <div className="min-w-0 flex-1 truncate rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 font-mono text-[0.65rem] text-zinc-300">
+            {link}
           </div>
-          <div className="mt-1 flex items-center justify-between gap-2">
-            <div className="truncate text-lg font-black tracking-widest text-amber-500">
-              {code || "—"}
-            </div>
-            <button
-              type="button"
-              onClick={() => code && copy(code, "Code")}
-              disabled={!code}
-              aria-label="Copy referral code"
-              className="shrink-0 rounded-lg bg-zinc-800 p-2 text-zinc-300 hover:bg-zinc-700 disabled:opacity-40"
-            >
-              <Copy className="h-4 w-4" />
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={() => void copy(link, "Link")}
+            aria-label="Copy referral link"
+            className="shrink-0 rounded-lg bg-zinc-800 p-2 text-zinc-300 hover:bg-zinc-700"
+          >
+            <Copy className="h-4 w-4" />
+          </button>
         </div>
 
-        <div className="mt-2 rounded-xl border border-zinc-700 bg-zinc-950 p-3">
-          <div className="text-[0.6rem] uppercase tracking-widest text-zinc-500">
-            Invite link · @{REFERRAL_BOT}
-          </div>
-          <div className="mt-1 flex items-center justify-between gap-2">
-            <div className="truncate text-xs text-zinc-300">{link}</div>
-            <button
-              type="button"
-              onClick={() => copy(link, "Link")}
-              aria-label="Copy invite link"
-              className="shrink-0 rounded-lg bg-zinc-800 p-2 text-zinc-300 hover:bg-zinc-700"
-            >
-              <Copy className="h-4 w-4" />
-            </button>
-          </div>
-        </div>
-
-        {/* Restored dual share: Telegram + X */}
-        <div className="mt-3 grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-2 gap-2">
           <button
             type="button"
             onClick={shareTelegram}
-            className="min-h-[2.75rem] rounded-xl bg-sky-600 py-3 text-sm font-black uppercase tracking-widest text-white hover:bg-sky-500"
+            className="rounded-xl bg-white py-2.5 text-[0.7rem] font-black uppercase tracking-wider text-black hover:bg-zinc-200"
           >
             Share Telegram
           </button>
           <button
             type="button"
             onClick={shareX}
-            className="min-h-[2.75rem] rounded-xl bg-zinc-100 py-3 text-sm font-black uppercase tracking-widest text-black hover:bg-white"
+            className="rounded-xl border border-zinc-600 bg-zinc-950 py-2.5 text-[0.7rem] font-black uppercase tracking-wider text-white hover:border-zinc-400"
           >
             Share on X
           </button>
         </div>
-
-        <div className="mt-3 grid grid-cols-2 gap-2">
-          <div className="rounded-xl bg-amber-950/40 px-3 py-2">
-            <div className="text-[0.55rem] uppercase tracking-widest text-zinc-500">
-              Verified
-            </div>
-            <div className="text-sm font-black text-amber-500">
-              {!authenticated ? "—" : loading ? "…" : referralCount}
-            </div>
-          </div>
-          <div className="rounded-xl bg-zinc-950 px-3 py-2">
-            <div className="text-[0.55rem] uppercase tracking-widest text-zinc-500">
-              Total joined
-            </div>
-            <div className="text-sm font-black text-zinc-300">
-              {!authenticated ? "—" : loading ? "…" : rawCount}
-            </div>
-          </div>
-        </div>
-
-        {authenticated && !loading && !error && referralCount === 0 && (
-          <p className="mt-2 text-center text-[0.65rem] text-zinc-500">
-            Friends must open your link <strong>inside Telegram</strong>, then
-            play a few merges so they verify.
-          </p>
-        )}
       </div>
 
+      {/* Counts */}
+      <div className="grid grid-cols-2 gap-3">
+        <div className="rounded-2xl border border-zinc-700 bg-zinc-900 p-4 text-center">
+          <div className="text-[0.6rem] font-bold uppercase tracking-wider text-zinc-500">
+            Verified
+          </div>
+          <div className="mt-1 text-2xl font-black text-white">
+            {!authenticated ? "—" : loading ? "…" : referralCount}
+          </div>
+        </div>
+        <div className="rounded-2xl border border-zinc-700 bg-zinc-900 p-4 text-center">
+          <div className="text-[0.6rem] font-bold uppercase tracking-wider text-zinc-500">
+            Total joined
+          </div>
+          <div className="mt-1 text-2xl font-black text-white">
+            {!authenticated ? "—" : loading ? "…" : rawCount}
+          </div>
+        </div>
+      </div>
+
+      {authenticated && !loading && !error && referralCount === 0 && (
+        <div className="rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-center text-[0.7rem] text-zinc-400">
+          Friends must open your link{" "}
+          <span className="text-white">inside Telegram</span>, then play a few
+          merges so they verify.
+        </div>
+      )}
+
+      {/* Recent recruits — MUST stay when length > 0 */}
       {authenticated && recruits.length > 0 && (
         <div className="rounded-2xl border border-zinc-700 bg-zinc-900 p-4">
           <h3 className="mb-2 text-xs font-black uppercase tracking-widest text-zinc-500">
@@ -347,13 +352,13 @@ export function ReferralPanel({
                 key={`${r.name}-${r.joinedAt}-${i}`}
                 className="flex items-center justify-between gap-2 rounded-xl bg-zinc-950 px-3 py-2"
               >
-                <span className="truncate text-xs font-bold text-zinc-200">
+                <span className="truncate text-xs font-bold text-white">
                   {r.name}
                 </span>
                 <span
                   className={`shrink-0 rounded-md px-1.5 py-0.5 text-[0.55rem] font-black uppercase tracking-wider ${
                     r.qualified
-                      ? "bg-emerald-950 text-emerald-400"
+                      ? "bg-zinc-800 text-emerald-400"
                       : "bg-zinc-800 text-zinc-500"
                   }`}
                 >
@@ -365,6 +370,18 @@ export function ReferralPanel({
         </div>
       )}
 
+      {/* Empty list hint when people joined but API returned none (shouldn't happen) */}
+      {authenticated &&
+        !loading &&
+        !error &&
+        rawCount > 0 &&
+        recruits.length === 0 && (
+          <div className="rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-center text-[0.7rem] text-zinc-400">
+            {rawCount} joined — open Refresh if the list is empty.
+          </div>
+        )}
+
+      {/* Milestones */}
       <div className="rounded-2xl border border-zinc-700 bg-zinc-900 p-4">
         <h3 className="mb-2 text-xs font-black uppercase tracking-widest text-zinc-500">
           Milestone Rewards
@@ -389,7 +406,7 @@ export function ReferralPanel({
                     m.claimed
                       ? "border-zinc-700 bg-zinc-950 opacity-70"
                       : m.claimable
-                        ? "border-amber-500/50 bg-amber-950/30"
+                        ? "border-white/40 bg-zinc-950"
                         : "border-zinc-700 bg-zinc-950"
                   }`}
                 >
@@ -399,12 +416,19 @@ export function ReferralPanel({
                       {m.threshold === 1 ? "" : "s"}
                     </div>
                     <div className="text-[0.6rem] uppercase tracking-widest text-zinc-500">
-                      +{m.reward.glory}★ · +{m.reward.wardog}/{m.reward.warcat}
+                      +{m.reward.glory}★ ·{" "}
+                      <span className="text-red-300">
+                        +{m.reward.wardog}
+                      </span>
+                      /
+                      <span className="text-violet-300">
+                        {m.reward.warcat}
+                      </span>
                     </div>
                   </div>
                   <div className="h-1.5 overflow-hidden rounded-full bg-zinc-800">
                     <div
-                      className="h-full bg-amber-500 transition-all"
+                      className="h-full bg-white transition-all"
                       style={{ width: `${progress * 100}%` }}
                     />
                   </div>
@@ -417,13 +441,13 @@ export function ReferralPanel({
                         type="button"
                         onClick={() => void doClaim(m.threshold)}
                         disabled={busy === m.threshold}
-                        className="min-h-[2rem] rounded-lg bg-amber-500 px-3 py-1.5 text-[0.65rem] font-black uppercase tracking-wider text-black disabled:opacity-50"
+                        className="min-h-[2rem] rounded-lg bg-white px-3 py-1.5 text-[0.65rem] font-black uppercase tracking-wider text-black disabled:opacity-50"
                       >
                         {busy === m.threshold ? "Claiming…" : "Claim"}
                       </button>
                     )}
                     {m.claimed && (
-                      <span className="text-[0.65rem] font-bold uppercase tracking-wider text-emerald-500">
+                      <span className="text-[0.65rem] font-bold uppercase tracking-wider text-emerald-400">
                         Claimed
                       </span>
                     )}

@@ -141,7 +141,10 @@ export function EarnTab({
         <ReferralPanel
           state={state}
           authenticated={authenticated}
-          onCodeSync={(code) => game.hydrate({ ...state, referralCode: code })}
+          onCodeSync={(code) => {
+            // Only patch referralCode — do not replace whole state snapshot
+            game.hydrate({ ...game.state, referralCode: code });
+          }}
           onServerReward={(json) => {
             try {
               const parsed = JSON.parse(json) as typeof state;
