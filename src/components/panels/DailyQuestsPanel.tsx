@@ -1,4 +1,5 @@
 // src/components/panels/DailyQuestsPanel.tsx
+// White-on-black · color only on status writings
 import { useState } from "react";
 import { toast } from "sonner";
 import { Check } from "lucide-react";
@@ -6,7 +7,7 @@ import type { GameState } from "@/lib/game-state";
 import { haptic } from "@/lib/telegram";
 import { RewardLine } from "./RewardLine";
 import { ClaimBurst } from "@/components/game/ClaimBurst";
-import { GIFT_BOXES, GIFT_CLOSED_VARIANTS } from "@/lib/constants/gifts";
+import { GIFT_CLOSED_VARIANTS } from "@/lib/constants/gifts";
 import type { GiftBoxId } from "@/lib/constants/gifts";
 
 function pickClosedImg(id: GiftBoxId = "common") {
@@ -26,10 +27,10 @@ export function DailyQuestsPanel({
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between px-1">
-        <h3 className="text-xs font-black uppercase tracking-widest text-amber-400">
+        <h3 className="text-xs font-black uppercase tracking-widest text-zinc-500">
           Daily Ops
         </h3>
-        <div className="text-[0.6rem] uppercase tracking-widest text-zinc-500">
+        <div className="text-[0.6rem] uppercase tracking-widest text-zinc-600">
           Resets at midnight
         </div>
       </div>
@@ -51,19 +52,16 @@ export function DailyQuestsPanel({
             className={`rounded-2xl border p-2.5 ${
               q.claimed
                 ? "border-zinc-700 bg-zinc-900/60 opacity-80"
-                : ready
-                  ? "border-amber-500/40 bg-zinc-900"
-                  : "border-zinc-700 bg-zinc-900"
+                : "border-zinc-700 bg-zinc-900"
             }`}
           >
             <div className="flex items-center gap-2.5">
-              {/* Gift icon square */}
               <div
                 className={`grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-xl ${
                   q.claimed
-                    ? "bg-emerald-900/50"
+                    ? "bg-zinc-800"
                     : ready
-                      ? "bg-amber-500/20 ring-1 ring-amber-400/60"
+                      ? "bg-zinc-800 ring-1 ring-white/40"
                       : "bg-zinc-800"
                 }`}
               >
@@ -82,7 +80,7 @@ export function DailyQuestsPanel({
                 <div className="truncate text-sm font-bold text-white">
                   {q.title}
                 </div>
-                <div className="truncate text-xs text-zinc-400">{q.desc}</div>
+                <div className="truncate text-xs text-zinc-500">{q.desc}</div>
                 <RewardLine
                   glory={q.reward}
                   wardog={q.wardog}
@@ -101,14 +99,14 @@ export function DailyQuestsPanel({
                     setBurstGift("common");
                     toast.success("Daily ops claimed — supply drop incoming!");
                   } catch {
-                    // error already handled inside onClaim
+                    /* handled upstream */
                   }
                 }}
                 className={`min-h-[2.25rem] shrink-0 rounded-xl px-3 py-1.5 text-[0.65rem] font-bold uppercase tracking-wider ${
                   q.claimed
-                    ? "cursor-default bg-emerald-900/40 text-emerald-400"
+                    ? "cursor-default bg-zinc-800 text-emerald-400"
                     : ready
-                      ? "bg-amber-500 text-black hover:bg-amber-400"
+                      ? "bg-white text-black hover:bg-zinc-200"
                       : "cursor-not-allowed bg-zinc-800 text-zinc-500"
                 }`}
               >
@@ -120,11 +118,10 @@ export function DailyQuestsPanel({
               </button>
             </div>
 
-            {/* Progress bar */}
             <div className="mt-2 h-1 overflow-hidden rounded-full bg-zinc-800">
               <div
                 className={`h-full rounded-full transition-all ${
-                  q.claimed ? "bg-emerald-500" : "bg-amber-500"
+                  q.claimed ? "bg-emerald-500" : "bg-white"
                 }`}
                 style={{ width: `${pct}%` }}
               />

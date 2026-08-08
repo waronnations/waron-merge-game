@@ -53,7 +53,9 @@ export function TasksPanel({
               }`}
             >
               {claimed || t.done ? (
-                <Check className="h-5 w-5 text-white" />
+                <Check
+                  className={`h-5 w-5 ${claimed ? "text-emerald-400" : "text-white"}`}
+                />
               ) : (
                 <img
                   src={closedSrc}
@@ -90,10 +92,10 @@ export function TasksPanel({
               }}
               className={`min-h-[2.25rem] shrink-0 rounded-xl px-3 py-1.5 text-[0.65rem] font-bold uppercase tracking-wider ${
                 claimed
-                  ? "bg-white/10 text-white cursor-default"
+                  ? "cursor-default bg-white/10 text-emerald-400"
                   : canClaim
                     ? "bg-white text-black"
-                    : "bg-zinc-800 text-zinc-500 cursor-not-allowed"
+                    : "cursor-not-allowed bg-zinc-800 text-zinc-500"
               }`}
             >
               {claimed ? "Claimed" : t.done ? "Claim" : "Locked"}

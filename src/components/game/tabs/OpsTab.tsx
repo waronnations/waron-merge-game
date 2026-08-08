@@ -1,4 +1,5 @@
 // src/components/game/tabs/OpsTab.tsx
+// White-on-black base · colored writings only (labels / status / tokens)
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Crosshair,
@@ -92,7 +93,6 @@ type TargetPreview = {
   protected: boolean;
 };
 
-/** Last successful hit — powers revenge / flex share buttons */
 type LastHit = {
   weaponId: BattlefieldWeaponId;
   victimLabel: string;
@@ -142,7 +142,8 @@ export function OpsTab({
   const [preview, setPreview] = useState<TargetPreview | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
-  const [strikeWeapon, setStrikeWeapon] = useState<BattlefieldWeaponId>("knife");
+  const [strikeWeapon, setStrikeWeapon] =
+    useState<BattlefieldWeaponId>("knife");
   const [tick, setTick] = useState(0);
   const [lastHit, setLastHit] = useState<LastHit | null>(null);
 
@@ -155,7 +156,7 @@ export function OpsTab({
     const text = referralCode
       ? buildReferralShareText(referralCode)
       : [
-          "⚔️ WAR ON NATIONS is live.",
+          "WAR ON NATIONS is live.",
           "Merge WARDOG & WARCAT. Climb ranks. Earn jettons.",
           "",
           "Join the pack:",
@@ -171,7 +172,6 @@ export function OpsTab({
     haptic("light");
   };
 
-  /** DM-style taunt — pick victim in share sheet */
   const shareRevenge = useCallback(
     (hit?: LastHit | null) => {
       const src = hit ?? lastHit;
@@ -183,7 +183,6 @@ export function OpsTab({
     [lastHit, strikeWeapon, referralLink],
   );
 
-  /** Public flex — pick @waronnations or any chat */
   const shareFlex = useCallback(
     (hit?: LastHit | null) => {
       const src = hit ?? lastHit;
@@ -237,7 +236,6 @@ export function OpsTab({
     return () => clearInterval(t);
   }, []);
 
-  // Debounced target preview
   useEffect(() => {
     const q = targetInput.trim();
     if (q.length < 2) {
@@ -336,11 +334,9 @@ export function OpsTab({
           glory: res.gloryGained,
         };
         setLastHit(hit);
-
         toast.success(
           `HIT · ${victimLabel} · +${res.gloryGained} glory · +${fmtToken(res.tokenReward)} tokens`,
         );
-
         setTimeout(() => {
           shareFlex(hit);
         }, 700);
@@ -395,27 +391,28 @@ export function OpsTab({
       <div className="space-y-4">
         <div className="flex items-center justify-between px-1">
           <div className="flex items-center gap-2">
-            <Swords className="h-4 w-4 text-red-400" />
-            <h2 className="text-xs font-black uppercase tracking-widest text-amber-400">
+            <Swords className="h-4 w-4 text-white" />
+            <h2 className="text-xs font-black uppercase tracking-widest text-white">
               Battlefield
             </h2>
           </div>
           <button
             type="button"
             onClick={() => void refresh()}
-            className="flex items-center gap-1 text-[0.6rem] font-bold uppercase tracking-wider text-zinc-500 hover:text-zinc-300"
+            className="flex items-center gap-1 text-[0.6rem] font-bold uppercase tracking-wider text-zinc-500 hover:text-white"
           >
             <RefreshCw className="h-3 w-3" />
             Refresh
           </button>
         </div>
 
-        <div className="rounded-xl border border-red-500/25 bg-red-950/20 px-3 py-2 text-[0.65rem] leading-relaxed text-red-100/80">
-          Weapons cost <strong className="text-red-200">topped-up</strong>{" "}
-          $WARDOG / $WARCAT — dynamic tax feeds Claim Treasury
+        {/* Info — monochrome card, only strong words tinted */}
+        <div className="rounded-xl border border-zinc-700 bg-zinc-900/80 px-3 py-2 text-[0.65rem] leading-relaxed text-zinc-400">
+          Weapons cost <span className="text-white">topped-up</span> $WARDOG /
+          $WARCAT — dynamic tax feeds Claim Treasury
           {zoneLabel ? ` (${zoneLabel})` : ""}. Strike by{" "}
-          <strong className="text-red-200">Telegram ID</strong> or{" "}
-          <strong className="text-red-200">@username</strong>. Protected nations
+          <span className="text-white">Telegram ID</span> or{" "}
+          <span className="text-white">@username</span>. Protected nations
           cannot be hit.
         </div>
 
@@ -428,7 +425,7 @@ export function OpsTab({
             {/* Kill feed */}
             <div>
               <div className="mb-2 flex items-center gap-2 px-1">
-                <Radio className="h-3.5 w-3.5 text-amber-400" />
+                <Radio className="h-3.5 w-3.5 text-zinc-400" />
                 <h3 className="text-[0.65rem] font-black uppercase tracking-widest text-zinc-500">
                   Kill feed
                 </h3>
@@ -442,7 +439,7 @@ export function OpsTab({
                   {feed.map((row) => (
                     <div
                       key={row.id}
-                      className="flex items-center gap-2 rounded-lg border border-zinc-800/80 bg-zinc-950/60 px-2.5 py-1.5 text-[0.65rem]"
+                      className="flex items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-950/60 px-2.5 py-1.5 text-[0.65rem]"
                     >
                       <span className="font-black text-emerald-400">HIT</span>
                       <span className="truncate text-zinc-300">
@@ -464,7 +461,7 @@ export function OpsTab({
             {/* Armory */}
             <div>
               <div className="mb-2 flex items-center gap-2 px-1">
-                <ShoppingBag className="h-3.5 w-3.5 text-amber-400" />
+                <ShoppingBag className="h-3.5 w-3.5 text-zinc-400" />
                 <h3 className="text-[0.65rem] font-black uppercase tracking-widest text-zinc-500">
                   Armory · spendable only
                 </h3>
@@ -510,7 +507,7 @@ export function OpsTab({
                           type="button"
                           disabled={!!busy}
                           onClick={() => void handleBuy(id, "wardog")}
-                          className="rounded-xl border border-red-500/50 bg-red-950/40 py-2.5 text-[0.65rem] font-black uppercase tracking-wider text-red-300 disabled:opacity-40"
+                          className="rounded-xl border border-zinc-600 bg-zinc-950 py-2.5 text-[0.65rem] font-black uppercase tracking-wider text-red-300 disabled:opacity-40"
                         >
                           {busy === `buy:${id}:wardog` ? (
                             <RefreshCw className="mx-auto h-3.5 w-3.5 animate-spin" />
@@ -522,7 +519,7 @@ export function OpsTab({
                           type="button"
                           disabled={!!busy}
                           onClick={() => void handleBuy(id, "warcat")}
-                          className="rounded-xl border border-violet-500/50 bg-violet-950/40 py-2.5 text-[0.65rem] font-black uppercase tracking-wider text-violet-300 disabled:opacity-40"
+                          className="rounded-xl border border-zinc-600 bg-zinc-950 py-2.5 text-[0.65rem] font-black uppercase tracking-wider text-violet-300 disabled:opacity-40"
                         >
                           {busy === `buy:${id}:warcat` ? (
                             <RefreshCw className="mx-auto h-3.5 w-3.5 animate-spin" />
@@ -540,8 +537,8 @@ export function OpsTab({
             {/* Strike */}
             <div className="rounded-2xl border border-zinc-700 bg-zinc-900/90 p-4">
               <div className="mb-3 flex items-center gap-2">
-                <Crosshair className="h-4 w-4 text-red-400" />
-                <h3 className="text-xs font-black uppercase tracking-widest text-zinc-300">
+                <Crosshair className="h-4 w-4 text-white" />
+                <h3 className="text-xs font-black uppercase tracking-widest text-white">
                   Strike
                 </h3>
                 <span className="ml-auto text-[0.6rem] font-bold text-zinc-500">
@@ -559,7 +556,7 @@ export function OpsTab({
                   placeholder="123456789 or @username"
                   value={targetInput}
                   onChange={(e) => setTargetInput(e.target.value)}
-                  className="w-full rounded-xl border border-zinc-600 bg-zinc-950 py-2.5 pl-9 pr-3 font-mono text-sm text-white outline-none focus:border-red-500/60"
+                  className="w-full rounded-xl border border-zinc-600 bg-zinc-950 py-2.5 pl-9 pr-3 font-mono text-sm text-white outline-none focus:border-white/40"
                 />
               </div>
 
@@ -569,31 +566,27 @@ export function OpsTab({
                 </div>
               )}
               {preview && (
-                <div
-                  className={`mb-3 flex items-center gap-2 rounded-xl border px-3 py-2 text-xs ${
-                    preview.protected
-                      ? "border-sky-500/40 bg-sky-950/30 text-sky-200"
-                      : "border-emerald-500/30 bg-emerald-950/20 text-emerald-200"
-                  }`}
-                >
+                <div className="mb-3 flex items-center gap-2 rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-xs text-zinc-200">
                   {preview.protected ? (
-                    <Shield className="h-3.5 w-3.5 shrink-0" />
+                    <Shield className="h-3.5 w-3.5 shrink-0 text-zinc-400" />
                   ) : (
-                    <Crosshair className="h-3.5 w-3.5 shrink-0" />
+                    <Crosshair className="h-3.5 w-3.5 shrink-0 text-white" />
                   )}
-                  <span className="font-bold">{preview.displayName}</span>
-                  <span className="text-[0.6rem] opacity-70">
+                  <span className="font-bold text-white">
+                    {preview.displayName}
+                  </span>
+                  <span className="text-[0.6rem] text-zinc-500">
                     tg:{preview.telegramId}
                   </span>
                   {preview.protected && (
-                    <span className="ml-auto text-[0.6rem] font-black uppercase">
+                    <span className="ml-auto text-[0.6rem] font-black uppercase text-zinc-400">
                       Protected
                     </span>
                   )}
                 </div>
               )}
               {previewError && (
-                <div className="mb-3 text-[0.65rem] text-amber-400/90">
+                <div className="mb-3 text-[0.65rem] text-zinc-400">
                   {previewError}
                 </div>
               )}
@@ -614,7 +607,7 @@ export function OpsTab({
                       onClick={() => setStrikeWeapon(id)}
                       className={`rounded-xl border py-2 text-[0.6rem] font-black uppercase tracking-wider ${
                         selected
-                          ? "border-red-500/60 bg-red-950/40 text-red-300"
+                          ? "border-white/50 bg-white/10 text-white"
                           : "border-zinc-700 bg-zinc-950 text-zinc-400"
                       }`}
                     >
@@ -629,7 +622,7 @@ export function OpsTab({
                 type="button"
                 disabled={!!busy || !!preview?.protected}
                 onClick={() => void handleStrike()}
-                className="flex w-full items-center justify-center gap-2 rounded-xl bg-red-600 py-3 text-sm font-black uppercase tracking-wider text-white hover:bg-red-500 disabled:opacity-40"
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-white py-3 text-sm font-black uppercase tracking-wider text-black hover:bg-zinc-200 disabled:opacity-40"
               >
                 {busy === "strike" ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -644,18 +637,18 @@ export function OpsTab({
               </button>
             </div>
 
-            {/* After HIT — taunt / flex */}
+            {/* After HIT */}
             {lastHit && (
-              <div className="rounded-2xl border border-emerald-500/30 bg-emerald-950/20 p-4">
-                <div className="mb-2 text-xs font-black uppercase tracking-widest text-emerald-300">
+              <div className="rounded-2xl border border-zinc-700 bg-zinc-900/90 p-4">
+                <div className="mb-2 text-xs font-black uppercase tracking-widest text-white">
                   Last hit · {lastHit.victimLabel} · +{lastHit.glory} glory
                 </div>
                 <p className="mb-3 text-[0.65rem] leading-relaxed text-zinc-400">
                   Telegram cannot force a DM. Use{" "}
-                  <strong className="text-zinc-200">Send revenge</strong> and
-                  pick their chat, or{" "}
-                  <strong className="text-zinc-200">Flex in group</strong> and
-                  pick @waronnations.
+                  <span className="text-white">Send revenge</span> and pick
+                  their chat, or{" "}
+                  <span className="text-white">Flex in group</span> and pick
+                  @waronnations.
                 </p>
                 {revengePreview && (
                   <pre className="mb-2 max-h-24 overflow-auto whitespace-pre-wrap rounded-xl border border-zinc-800 bg-zinc-950/80 p-2 text-[0.6rem] text-zinc-400">
@@ -666,7 +659,7 @@ export function OpsTab({
                   <button
                     type="button"
                     onClick={() => shareRevenge(lastHit)}
-                    className="flex items-center justify-center gap-2 rounded-xl border border-red-500/40 bg-red-950/40 py-3 text-xs font-black uppercase tracking-wider text-red-200"
+                    className="flex items-center justify-center gap-2 rounded-xl border border-zinc-600 bg-zinc-950 py-3 text-xs font-black uppercase tracking-wider text-white"
                   >
                     <MessageCircle className="h-3.5 w-3.5" />
                     Send revenge
@@ -674,7 +667,7 @@ export function OpsTab({
                   <button
                     type="button"
                     onClick={() => shareFlex(lastHit)}
-                    className="flex items-center justify-center gap-2 rounded-xl border border-amber-500/40 bg-amber-950/40 py-3 text-xs font-black uppercase tracking-wider text-amber-200"
+                    className="flex items-center justify-center gap-2 rounded-xl border border-zinc-600 bg-zinc-950 py-3 text-xs font-black uppercase tracking-wider text-white"
                   >
                     <Megaphone className="h-3.5 w-3.5" />
                     Flex in group
@@ -688,7 +681,7 @@ export function OpsTab({
               </div>
             )}
 
-            {/* Personal history */}
+            {/* History */}
             <div>
               <div className="mb-2 flex items-center gap-2 px-1">
                 <History className="h-3.5 w-3.5 text-zinc-400" />
@@ -733,11 +726,11 @@ export function OpsTab({
               )}
             </div>
 
-            {/* Rally the pack */}
-            <div className="rounded-2xl border border-amber-500/30 bg-gradient-to-br from-amber-950/40 to-zinc-900 p-4">
+            {/* Rally */}
+            <div className="rounded-2xl border border-zinc-700 bg-zinc-900 p-4">
               <div className="mb-2 flex items-center gap-2">
-                <Users className="h-4 w-4 text-amber-400" />
-                <h3 className="text-xs font-black uppercase tracking-widest text-amber-200">
+                <Users className="h-4 w-4 text-white" />
+                <h3 className="text-xs font-black uppercase tracking-widest text-white">
                   Rally the pack
                 </h3>
               </div>
@@ -746,7 +739,7 @@ export function OpsTab({
                 that play count toward referral rewards.
               </p>
               {referralCode ? (
-                <div className="mb-3 break-all rounded-xl border border-zinc-700 bg-zinc-950/80 px-3 py-2 font-mono text-[0.7rem] text-amber-400/90">
+                <div className="mb-3 break-all rounded-xl border border-zinc-700 bg-zinc-950/80 px-3 py-2 font-mono text-[0.7rem] text-zinc-300">
                   {referralLink}
                 </div>
               ) : (
@@ -758,7 +751,7 @@ export function OpsTab({
                 <button
                   type="button"
                   onClick={openShareReferral}
-                  className="flex items-center justify-center gap-2 rounded-xl bg-amber-500 py-3 text-xs font-black uppercase tracking-wider text-black hover:bg-amber-400"
+                  className="flex items-center justify-center gap-2 rounded-xl bg-white py-3 text-xs font-black uppercase tracking-wider text-black hover:bg-zinc-200"
                 >
                   <Share2 className="h-3.5 w-3.5" />
                   Share referral
@@ -777,13 +770,13 @@ export function OpsTab({
         )}
       </div>
 
-      {/* Daily Ops only */}
+      {/* Daily Ops */}
       <div className="mt-6 space-y-3 border-t border-zinc-800 pt-4">
-        <h3 className="px-1 text-[0.65rem] font-black uppercase tracking-widest text-amber-400">
+        <h3 className="px-1 text-[0.65rem] font-black uppercase tracking-widest text-zinc-500">
           Daily Ops
         </h3>
         {missionsBadge > 0 && (
-          <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-center text-[0.7rem] font-black uppercase tracking-wider text-amber-300">
+          <div className="rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-center text-[0.7rem] font-black uppercase tracking-wider text-white">
             {missionsBadge} reward{missionsBadge === 1 ? "" : "s"} ready — scroll
             & tap Claim
           </div>
