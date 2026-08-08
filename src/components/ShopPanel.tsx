@@ -1,5 +1,11 @@
 // src/components/ShopPanel.tsx
-import { useEffect, useState } from "react";
+/**
+ * Shop UI
+ * - energyPack: paid from UNCLAIMED playable (merge earnings). Not top-up.
+ * - gloryBoost / nukePack / gifts: topped-up spendable only.
+ * - Merge board itself never spends tokens (energy only).
+ */
+import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import {
   Zap,
@@ -29,6 +35,9 @@ type ListedNation = {
   memberCount: number;
   isDefault?: boolean;
 };
+
+/** Board energy — server debits playable (unclaimed) only */
+const PLAYABLE_ITEMS = new Set<ShopItemId>(["energyPack"]);
 
 const POWERUP_IDS: ShopItemId[] = ["energyPack", "gloryBoost", "nukePack"];
 const GIFT_IDS: ShopItemId[] = [
@@ -93,12 +102,26 @@ const ITEM_META: Record<
   },
 };
 
+function fmt(n: number): string {
+  if (!Number.isFinite(n)) return "0";
+  return n >= 10 ? n.toFixed(1) : n.toFixed(2);
+}
+
 export function ShopPanel({
   state,
   onBuy,
+  /** Optional top-up balances from parent (ClaimPanel / topups API) */
+  spendableWardog = 0,
+  spendableWarcat = 0,
+  claimedWardog = 0,
+  claimedWarcat = 0,
 }: {
   state: GameState;
   onBuy: (itemId: ShopItemId, payWith: PayToken) => Promise<void> | void;
+  spendableWardog?: number;
+  spendableWarcat?: number;
+  claimedWardog?: number;
+  claimedWarcat?: number;
 }) {
   const { pay, connected, address, disconnectWallet } = usePayments();
   const [busyKey, setBusyKey] = useState<string | null>(null);
@@ -106,8 +129,12 @@ export function ShopPanel({
   const [loadingNations, setLoadingNations] = useState(true);
   const [buyingKey, setBuyingKey] = useState<string | null>(null);
 
-  const wardog = Number(state.wardogTokens ?? 0);
-  const warcat = Number(state.warcatTokens ?? 0);
+  const totalW = Number(state.wardogTokens ?? 0);
+  const totalC = Number(state.warcatTokens ?? 0);
+
+  // Unclaimed playable = ledger total − already claimed (cannot go below 0)
+  const playableW = Math.max(0, totalW - Number(claimedWardog ?? 0));
+  const playableC = Math.max(0, totalC - Number(claimedWarcat ?? 0));
 
   const loadMarketplace = async () => {
     setLoadingNations(true);
@@ -132,9 +159,44 @@ export function ShopPanel({
     void loadMarketplace();
   }, []);
 
+  const balanceForItem = useMemo(() => {
+    return (itemId: ShopItemId, payWith: PayToken) => {
+      if (PLAYABLE_ITEMS.has(itemId)) {
+        return payWith === "wardog" ? playableW : playableC;
+      }
+      // Prefer spendable when parent passed it; fall back to totals for UX
+      if (payWith === "wardog") {
+        return spendableWardog > 0 ? spendableWardog : totalW;
+      }
+      return spendableWarcat > 0 ? spendableWarcat : totalC;
+    };
+  }, [
+    playableW,
+    playableC,
+    spendableWardog,
+    spendableWarcat,
+    totalW,
+    totalC,
+  ]);
+
   const handleShopBuy = async (itemId: ShopItemId, payWith: PayToken) => {
     if (busyKey) return;
     const item = SHOP_ITEMS[itemId];
+    const balance = balanceForItem(itemId, payWith);
+    const isPlayable = PLAYABLE_ITEMS.has(itemId);
+
+    if (balance < item.cost - 0.001) {
+      toast.error(
+        isPlayable
+          ? payWith === "wardog"
+            ? "Not enough unclaimed $WARDOG — keep merging"
+            : "Not enough unclaimed $WARCAT — keep merging"
+          : payWith === "wardog"
+            ? "Not enough topped-up $WARDOG — use Top Up"
+            : "Not enough topped-up $WARCAT — use Top Up",
+      );
+      return;
+    }
 
     setBusyKey(`${itemId}:${payWith}`);
     try {
@@ -147,15 +209,17 @@ export function ShopPanel({
       }
       await onBuy(itemId, payWith);
       haptic("heavy");
-      toast.success(`${item.name} purchased!`);
+      toast.success(
+        isPlayable
+          ? `${item.name} · paid from unclaimed tokens`
+          : `${item.name} purchased!`,
+      );
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
-      if (msg.includes("insufficient_spendable")) {
+      if (msg.includes("insufficient_playable")) {
+        toast.error("Need unclaimed merge tokens for board energy");
+      } else if (msg.includes("insufficient_spendable")) {
         toast.error("Need topped-up balance — use Top Up");
-      } else if (msg.includes("insufficient_tokens")) {
-        toast.error(
-          payWith === "wardog" ? "Not enough $WARDOG" : "Not enough $WARCAT",
-        );
       } else {
         toast.error("Purchase failed");
       }
@@ -166,6 +230,23 @@ export function ShopPanel({
 
   const handleBuyNation = async (nation: ListedNation, payWith: PayToken) => {
     if (buyingKey || !nation.listedPrice) return;
+    const price = Number(nation.listedPrice);
+    const balance =
+      payWith === "wardog"
+        ? spendableWardog > 0
+          ? spendableWardog
+          : totalW
+        : spendableWarcat > 0
+          ? spendableWarcat
+          : totalC;
+    if (balance < price - 0.001) {
+      toast.error(
+        payWith === "wardog"
+          ? "Not enough $WARDOG (prefer topped-up)"
+          : "Not enough $WARCAT (prefer topped-up)",
+      );
+      return;
+    }
 
     const key = `${nation.id}:${payWith}`;
     setBuyingKey(key);
@@ -185,17 +266,12 @@ export function ShopPanel({
       await loadMarketplace();
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "";
-      if (msg.includes("insufficient_spendable")) {
-        toast.error("Need topped-up balance — use Top Up");
-      } else if (msg.includes("insufficient_tokens")) {
-        toast.error("Not enough tokens");
-      } else if (msg.includes("not_for_sale")) {
-        toast.error("No longer for sale");
-      } else if (msg.includes("must_leave_current_nation")) {
+      if (msg.includes("insufficient_tokens") || msg.includes("insufficient_spendable"))
+        toast.error("Not enough tokens / top-up");
+      else if (msg.includes("not_for_sale")) toast.error("No longer for sale");
+      else if (msg.includes("must_leave_current_nation"))
         toast.error("Leave your current nation first");
-      } else {
-        toast.error("Purchase failed");
-      }
+      else toast.error("Purchase failed");
     } finally {
       setBuyingKey(null);
     }
@@ -208,6 +284,9 @@ export function ShopPanel({
       border: "border-zinc-600",
       bg: "bg-zinc-900",
     };
+    const isPlayable = PLAYABLE_ITEMS.has(id);
+    const balW = balanceForItem(id, "wardog");
+    const balC = balanceForItem(id, "warcat");
 
     return (
       <motion.div
@@ -235,14 +314,15 @@ export function ShopPanel({
             <div className="text-sm font-black text-white">{item.name}</div>
             <div className="text-xs text-zinc-400">{item.desc}</div>
             <div className="mt-1 text-[0.65rem] font-bold uppercase tracking-wider text-zinc-500">
-              Cost · {item.cost} of one token (topped-up)
+              Cost · {item.cost} of one token
+              {isPlayable ? " · unclaimed only" : " · topped-up only"}
             </div>
           </div>
         </div>
         <div className="mt-3 grid grid-cols-2 gap-2">
           <button
             type="button"
-            disabled={!!busyKey}
+            disabled={!!busyKey || balW < item.cost - 0.001}
             onClick={() => void handleShopBuy(id, "wardog")}
             className="flex items-center justify-center gap-1.5 rounded-xl border border-red-500/50 bg-red-950/40 py-2.5 text-[0.7rem] font-black uppercase tracking-wider text-red-300 disabled:opacity-40"
           >
@@ -253,7 +333,7 @@ export function ShopPanel({
           </button>
           <button
             type="button"
-            disabled={!!busyKey}
+            disabled={!!busyKey || balC < item.cost - 0.001}
             onClick={() => void handleShopBuy(id, "warcat")}
             className="flex items-center justify-center gap-1.5 rounded-xl border border-violet-500/50 bg-violet-950/40 py-2.5 text-[0.7rem] font-black uppercase tracking-wider text-violet-300 disabled:opacity-40"
           >
@@ -269,9 +349,32 @@ export function ShopPanel({
 
   return (
     <div className="space-y-5">
+      {/* Balance legend */}
+      <div className="rounded-xl border border-zinc-700 bg-zinc-900/80 px-3 py-2.5 text-[0.65rem] leading-relaxed text-zinc-400">
+        <div className="mb-1 font-black uppercase tracking-wider text-zinc-300">
+          Token pools
+        </div>
+        <div>
+          Unclaimed (board energy):{" "}
+          <span className="text-sky-300">
+            {fmt(playableW)} $WARDOG · {fmt(playableC)} $WARCAT
+          </span>
+        </div>
+        <div>
+          Topped-up (OPS / other shop):{" "}
+          <span className="text-amber-300">
+            {fmt(spendableWardog)} $WARDOG · {fmt(spendableWarcat)} $WARCAT
+          </span>
+        </div>
+        <div className="mt-1 text-zinc-500">
+          Merging stays free (energy only). Energy packs use unclaimed merge
+          earnings, not top-ups.
+        </div>
+      </div>
+
       {/* Wallet status */}
       <div className="flex items-center justify-between rounded-xl border border-zinc-700 bg-zinc-900/80 px-3 py-2.5">
-        <div className="flex items-center gap-2 min-w-0">
+        <div className="flex min-w-0 items-center gap-2">
           <Wallet
             className={`h-4 w-4 shrink-0 ${connected ? "text-emerald-400" : "text-zinc-500"}`}
           />
@@ -297,23 +400,28 @@ export function ShopPanel({
         )}
       </div>
 
-      {/* Clear rule banner */}
-      <div className="rounded-xl border border-amber-500/30 bg-amber-950/20 px-3 py-2 text-center text-[0.65rem] font-bold uppercase tracking-wider text-amber-300/90">
-        Operations use Topped-up balances only · Free merge rewards are claimable
+      {/* Board energy */}
+      <div>
+        <h3 className="mb-2 text-xs font-black uppercase tracking-widest text-sky-500/90">
+          Board energy · unclaimed tokens
+        </h3>
+        <div className="space-y-3">{renderItem("energyPack")}</div>
       </div>
 
-      {/* Power-ups */}
+      {/* Other power-ups */}
       <div>
         <h3 className="mb-2 text-xs font-black uppercase tracking-widest text-zinc-500">
-          Power-ups
+          Power-ups · topped-up
         </h3>
-        <div className="space-y-3">{POWERUP_IDS.map(renderItem)}</div>
+        <div className="space-y-3">
+          {POWERUP_IDS.filter((id) => id !== "energyPack").map(renderItem)}
+        </div>
       </div>
 
       {/* Gift Boxes */}
       <div>
         <h3 className="mb-2 text-xs font-black uppercase tracking-widest text-zinc-500">
-          Supply Drops
+          Supply Drops · topped-up
         </h3>
         <div className="space-y-3">{GIFT_IDS.map(renderItem)}</div>
       </div>
@@ -365,7 +473,9 @@ export function ShopPanel({
                 <div className="mt-3 grid grid-cols-2 gap-2">
                   <button
                     type="button"
-                    disabled={!!buyingKey}
+                    disabled={
+                      !!buyingKey || totalW < Number(n.listedPrice) - 0.001
+                    }
                     onClick={() => void handleBuyNation(n, "wardog")}
                     className="rounded-xl border border-red-500/50 bg-red-950/40 py-2.5 text-[0.65rem] font-black uppercase tracking-wider text-red-300 disabled:opacity-40"
                   >
@@ -375,7 +485,9 @@ export function ShopPanel({
                   </button>
                   <button
                     type="button"
-                    disabled={!!buyingKey}
+                    disabled={
+                      !!buyingKey || totalC < Number(n.listedPrice) - 0.001
+                    }
                     onClick={() => void handleBuyNation(n, "warcat")}
                     className="rounded-xl border border-violet-500/50 bg-violet-950/40 py-2.5 text-[0.65rem] font-black uppercase tracking-wider text-violet-300 disabled:opacity-40"
                   >
@@ -389,11 +501,6 @@ export function ShopPanel({
           </div>
         )}
       </div>
-
-      <p className="text-center text-[0.6rem] leading-relaxed text-zinc-600">
-        Shop & marketplace require topped-up $WARDOG / $WARCAT (use Top Up).  
-        Free merge-board earnings are claimable only. Never native TON.
-      </p>
     </div>
   );
 }
