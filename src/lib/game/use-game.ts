@@ -10,6 +10,7 @@ import {
   MAX_ENERGY,
   LOCAL_BOARD_LOCK_MS,
   STARTER_PACK,
+  type EnergyTreasuryZone,
 } from "@/lib/constants";
 import { preloadUnitImages } from "@/lib/preload-units";
 import type { GameState, HybridNFT } from "./types";
@@ -54,8 +55,11 @@ import {
   applyServerStateLogic,
   hydrateState,
 } from "./server-reconcile";
+import { getTreasuryHealthFn } from "@/lib/treasury.functions";
 
 export type { DailyClaimResult, LocalRecoverResult };
+
+const ZONE_REFRESH_MS = 12_000;
 
 export function useGame() {
   const [state, setState] = useState<GameState>(() => initialState());
@@ -64,6 +68,9 @@ export function useGame() {
 
   const boardRevisionRef = useRef(0);
   const localBoardLockUntilRef = useRef(0);
+
+  /** Cached Claim Treasury zone for dynamic energy regen (default yellow = 1×). */
+  const treasuryZoneRef = useRef<EnergyTreasuryZone>("yellow");
 
   const bumpBoardRevision = () => {
     boardRevisionRef.current += 1;
@@ -87,6 +94,35 @@ export function useGame() {
     if (hydrated) save(state);
   }, [state, hydrated]);
 
+  // Refresh treasury zone periodically so energy regen tracks Claim Treasury health
+  useEffect(() => {
+    let cancelled = false;
+
+    const refreshZone = async () => {
+      try {
+        const snap = await getTreasuryHealthFn();
+        if (cancelled || !snap?.zone) return;
+        if (
+          snap.zone === "green" ||
+          snap.zone === "yellow" ||
+          snap.zone === "red" ||
+          snap.zone === "critical"
+        ) {
+          treasuryZoneRef.current = snap.zone;
+        }
+      } catch {
+        /* offline — keep last known zone */
+      }
+    };
+
+    void refreshZone();
+    const int = setInterval(() => void refreshZone(), ZONE_REFRESH_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(int);
+    };
+  }, []);
+
   useEffect(() => {
     const check = () => {
       setState((s) => {
@@ -100,10 +136,11 @@ export function useGame() {
     return () => clearInterval(int);
   }, []);
 
+  // Passive energy regen — driven by treasury zone
   useEffect(() => {
     const interval = setInterval(() => {
       setState((s) => {
-        const next = energyRegenTick(s);
+        const next = energyRegenTick(s, treasuryZoneRef.current);
         if (!next) return s;
         stateRef.current = next;
         return next;

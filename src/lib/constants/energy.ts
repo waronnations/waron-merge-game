@@ -34,10 +34,10 @@ export const RECOVER_ENERGY_TOKEN_COST = 0.9;
 export type EnergyTreasuryZone = "green" | "yellow" | "red" | "critical";
 
 export const ENERGY_ZONE_REGEN_MULT: Record<EnergyTreasuryZone, number> = {
-  green: 1.4, // healthy pool → faster play
-  yellow: 1.0, // normal
-  red: 0.7, // strained
-  critical: 0.45, // pool under pressure
+  green: 1.4,
+  yellow: 1.0,
+  red: 0.7,
+  critical: 0.45,
 };
 
 /** Human-readable label for UI */
