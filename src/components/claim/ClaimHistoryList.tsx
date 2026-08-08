@@ -28,8 +28,15 @@ export function ClaimHistoryList({
               className="flex items-center justify-between gap-2 rounded-lg border border-zinc-800 bg-zinc-900/50 px-3 py-2"
             >
               <div>
-                <div className="text-xs font-bold text-zinc-200">
-                  {c.amount.toFixed(2)} {TOKENS[c.token].symbol}
+                <div className="text-xs font-bold text-white">
+                  {c.amount.toFixed(2)}{" "}
+                  <span
+                    className={
+                      c.token === "wardog" ? "text-red-300" : "text-violet-300"
+                    }
+                  >
+                    {TOKENS[c.token].symbol}
+                  </span>
                 </div>
                 <div className="text-[0.6rem] text-zinc-500">
                   {new Date(c.createdAt).toLocaleString()}

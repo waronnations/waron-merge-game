@@ -33,7 +33,7 @@ export function ClaimAmountControls({
           type="button"
           disabled={disabled || available < minAmount}
           onClick={() => setPct(1)}
-          className="text-[0.65rem] font-bold uppercase tracking-wider text-amber-400 hover:text-amber-300 disabled:opacity-40"
+          className="text-[0.65rem] font-bold uppercase tracking-wider text-white hover:text-zinc-200 disabled:opacity-40"
         >
           Max {available.toFixed(2)}
         </button>
@@ -50,7 +50,7 @@ export function ClaimAmountControls({
           value={value}
           disabled={disabled}
           onChange={(e) => onChange(e.target.value)}
-          className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm font-semibold text-zinc-100 outline-none ring-amber-500/40 placeholder:text-zinc-600 focus:ring-2 disabled:opacity-50"
+          className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm font-semibold text-white outline-none placeholder:text-zinc-600 focus:border-white/40 disabled:opacity-50"
         />
       </div>
 
@@ -62,7 +62,7 @@ export function ClaimAmountControls({
             disabled={disabled || available < minAmount}
             onClick={() => setPct(pct)}
             className={cn(
-              "rounded-lg border border-zinc-700 bg-zinc-900 px-2.5 py-1 text-[0.65rem] font-bold uppercase tracking-wider text-zinc-300 transition hover:border-amber-500/50 hover:text-amber-300 disabled:opacity-40",
+              "rounded-lg border border-zinc-700 bg-zinc-900 px-2.5 py-1 text-[0.65rem] font-bold uppercase tracking-wider text-zinc-300 transition hover:border-zinc-500 hover:text-white disabled:opacity-40",
             )}
           >
             {pct === 1 ? "Max" : `${pct * 100}%`}
@@ -71,8 +71,14 @@ export function ClaimAmountControls({
       </div>
 
       <p className="text-[0.6rem] text-zinc-500">
-        {TOKENS[token].symbol}: available {available.toFixed(2)} · min{" "}
-        {minAmount}
+        <span
+          className={
+            token === "wardog" ? "text-red-300" : "text-violet-300"
+          }
+        >
+          {TOKENS[token].symbol}
+        </span>
+        : available {available.toFixed(2)} · min {minAmount}
       </p>
     </div>
   );

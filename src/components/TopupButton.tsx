@@ -17,7 +17,7 @@ export function TopupButton({ className }: { className?: string }) {
           haptic("light");
         }}
         className={cn(
-          "inline-flex items-center gap-1.5 rounded-lg border border-white/40 bg-white/10 px-3 py-1.5 text-[0.65rem] font-black uppercase tracking-wider text-white transition hover:bg-white/20",
+          "inline-flex items-center gap-1.5 rounded-lg border border-zinc-600 bg-zinc-950 px-3 py-1.5 text-[0.65rem] font-black uppercase tracking-wider text-white transition hover:border-white/40 hover:bg-zinc-900",
           className,
         )}
       >

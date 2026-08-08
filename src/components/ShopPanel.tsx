@@ -1,9 +1,8 @@
 // src/components/ShopPanel.tsx
 /**
- * Shop UI — balanced tactical design
- * - ALL shop items (including energyPack): topped-up spendable only
- * - Merge board never spends tokens (energy only)
- * - Unclaimed merge earnings are claimable only
+ * Shop — white-on-black · colored writings only
+ * All shop items (incl. energyPack): topped-up spendable only
+ * Merge board: energy only
  */
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
@@ -47,56 +46,16 @@ const GIFT_IDS: ShopItemId[] = [
 
 const ITEM_META: Record<
   string,
-  { icon?: typeof Zap; color: string; border: string; bg: string; img?: string }
+  { icon?: typeof Zap; img?: string }
 > = {
-  energyPack: {
-    icon: Zap,
-    color: "text-sky-400",
-    border: "border-sky-500/40",
-    bg: "bg-zinc-900",
-  },
-  gloryBoost: {
-    icon: Flame,
-    color: "text-amber-400",
-    border: "border-amber-500/40",
-    bg: "bg-zinc-900",
-  },
-  nukePack: {
-    icon: Bomb,
-    color: "text-red-400",
-    border: "border-red-500/40",
-    bg: "bg-zinc-900",
-  },
-  gift_common: {
-    color: "text-amber-300",
-    border: "border-amber-500/40",
-    bg: "bg-zinc-900",
-    img: GIFT_BOXES.common.closedImg,
-  },
-  gift_wardog: {
-    color: "text-red-300",
-    border: "border-red-500/40",
-    bg: "bg-zinc-900",
-    img: GIFT_BOXES.wardog.closedImg,
-  },
-  gift_warcat: {
-    color: "text-violet-300",
-    border: "border-violet-500/40",
-    bg: "bg-zinc-900",
-    img: GIFT_BOXES.warcat.closedImg,
-  },
-  gift_nuke: {
-    color: "text-red-300",
-    border: "border-red-500/40",
-    bg: "bg-zinc-900",
-    img: GIFT_BOXES.nuke.closedImg,
-  },
-  gift_legendary: {
-    color: "text-amber-300",
-    border: "border-amber-500/40",
-    bg: "bg-zinc-900",
-    img: GIFT_BOXES.legendary.closedImg,
-  },
+  energyPack: { icon: Zap },
+  gloryBoost: { icon: Flame },
+  nukePack: { icon: Bomb },
+  gift_common: { img: GIFT_BOXES.common.closedImg },
+  gift_wardog: { img: GIFT_BOXES.wardog.closedImg },
+  gift_warcat: { img: GIFT_BOXES.warcat.closedImg },
+  gift_nuke: { img: GIFT_BOXES.nuke.closedImg },
+  gift_legendary: { img: GIFT_BOXES.legendary.closedImg },
 };
 
 function fmt(n: number): string {
@@ -127,8 +86,6 @@ export function ShopPanel({
 
   const totalW = Number(state.wardogTokens ?? 0);
   const totalC = Number(state.warcatTokens ?? 0);
-
-  // Unclaimed = display only (claim flow). Shop never spends this.
   const playableW = Math.max(0, totalW - Number(claimedWardog ?? 0));
   const playableC = Math.max(0, totalC - Number(claimedWarcat ?? 0));
 
@@ -155,11 +112,9 @@ export function ShopPanel({
     void loadMarketplace();
   }, []);
 
-  /** Shop always uses topped-up spendable */
   const balanceForItem = useMemo(() => {
-    return (_itemId: ShopItemId, payWith: PayToken) => {
-      return payWith === "wardog" ? spendableWardog : spendableWarcat;
-    };
+    return (_itemId: ShopItemId, payWith: PayToken) =>
+      payWith === "wardog" ? spendableWardog : spendableWarcat;
   }, [spendableWardog, spendableWarcat]);
 
   const handleShopBuy = async (itemId: ShopItemId, payWith: PayToken) => {
@@ -254,11 +209,7 @@ export function ShopPanel({
 
   const renderItem = (id: ShopItemId) => {
     const item = SHOP_ITEMS[id];
-    const meta = ITEM_META[id] || {
-      color: "text-zinc-300",
-      border: "border-zinc-700",
-      bg: "bg-zinc-900",
-    };
+    const meta = ITEM_META[id] || {};
     const balW = balanceForItem(id, "wardog");
     const balC = balanceForItem(id, "warcat");
 
@@ -266,12 +217,10 @@ export function ShopPanel({
       <motion.div
         key={id}
         layout
-        className={`rounded-2xl border ${meta.border} ${meta.bg} p-3.5`}
+        className="rounded-2xl border border-zinc-700 bg-zinc-900 p-3.5"
       >
         <div className="flex items-start gap-3">
-          <div
-            className={`grid h-11 w-11 place-items-center overflow-hidden rounded-xl bg-black/50 ${meta.color}`}
-          >
+          <div className="grid h-11 w-11 place-items-center overflow-hidden rounded-xl bg-black/50 text-white">
             {meta.img ? (
               <img
                 src={meta.img}
@@ -289,7 +238,7 @@ export function ShopPanel({
             <div className="text-xs text-zinc-400">{item.desc}</div>
             <div className="mt-1 text-[0.65rem] font-bold uppercase tracking-wider text-zinc-500">
               Cost · {item.cost} ·{" "}
-              <span className="text-amber-400/90">topped-up only</span>
+              <span className="text-white">topped-up only</span>
             </div>
           </div>
         </div>
@@ -298,7 +247,7 @@ export function ShopPanel({
             type="button"
             disabled={!!busyKey || balW < item.cost - 0.001}
             onClick={() => void handleShopBuy(id, "wardog")}
-            className="flex items-center justify-center gap-1.5 rounded-xl border border-red-500/50 bg-red-950/40 py-2.5 text-[0.7rem] font-black uppercase tracking-wider text-red-300 disabled:opacity-40"
+            className="flex items-center justify-center gap-1.5 rounded-xl border border-zinc-600 bg-zinc-950 py-2.5 text-[0.7rem] font-black uppercase tracking-wider text-red-300 disabled:opacity-40"
           >
             {busyKey === `${id}:wardog` ? (
               <RefreshCw className="h-3.5 w-3.5 animate-spin" />
@@ -309,7 +258,7 @@ export function ShopPanel({
             type="button"
             disabled={!!busyKey || balC < item.cost - 0.001}
             onClick={() => void handleShopBuy(id, "warcat")}
-            className="flex items-center justify-center gap-1.5 rounded-xl border border-violet-500/50 bg-violet-950/40 py-2.5 text-[0.7rem] font-black uppercase tracking-wider text-violet-300 disabled:opacity-40"
+            className="flex items-center justify-center gap-1.5 rounded-xl border border-zinc-600 bg-zinc-950 py-2.5 text-[0.7rem] font-black uppercase tracking-wider text-violet-300 disabled:opacity-40"
           >
             {busyKey === `${id}:warcat` ? (
               <RefreshCw className="h-3.5 w-3.5 animate-spin" />
@@ -323,22 +272,20 @@ export function ShopPanel({
 
   return (
     <div className="space-y-5">
-      {/* Token pools */}
       <div className="rounded-xl border border-zinc-700 bg-zinc-900/90 px-3 py-2.5 text-[0.65rem] leading-relaxed text-zinc-400">
-        <div className="mb-1 font-black uppercase tracking-wider text-amber-400">
+        <div className="mb-1 font-black uppercase tracking-wider text-white">
           Token pools
         </div>
         <div>
-          Unclaimed{" "}
-          <span className="text-zinc-500">(claim only)</span>:{" "}
-          <span className="text-sky-300">
+          Unclaimed <span className="text-zinc-500">(claim only)</span>:{" "}
+          <span className="text-white">
             {fmt(playableW)} $WARDOG · {fmt(playableC)} $WARCAT
           </span>
         </div>
         <div>
           Topped-up{" "}
           <span className="text-zinc-500">(shop · energy · OPS)</span>:{" "}
-          <span className="text-amber-300">
+          <span className="text-white">
             {fmt(spendableWardog)} $WARDOG · {fmt(spendableWarcat)} $WARCAT
           </span>
         </div>
@@ -348,7 +295,6 @@ export function ShopPanel({
         </div>
       </div>
 
-      {/* Wallet */}
       <div className="flex items-center justify-between rounded-xl border border-zinc-700 bg-zinc-900/90 px-3 py-2.5">
         <div className="flex min-w-0 items-center gap-2">
           <Wallet
@@ -376,24 +322,23 @@ export function ShopPanel({
         )}
       </div>
 
-      {/* Rule banner */}
-      <div className="rounded-xl border border-amber-500/30 bg-amber-950/20 px-3 py-2 text-center text-[0.65rem] font-bold uppercase tracking-wider text-amber-300/90">
-        Shop energy & power-ups · topped-up only · merge board · energy only ·
-        unclaimed · claimable
+      <div className="rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-center text-[0.65rem] font-bold uppercase tracking-wider text-zinc-400">
+        Shop energy & power-ups ·{" "}
+        <span className="text-white">topped-up only</span> · merge board ·{" "}
+        <span className="text-white">energy only</span> · unclaimed ·{" "}
+        <span className="text-white">claimable</span>
       </div>
 
-      {/* Board energy */}
       <div>
-        <h3 className="mb-2 flex items-center gap-2 text-xs font-black uppercase tracking-widest text-sky-400">
-          <Zap className="h-3.5 w-3.5" />
+        <h3 className="mb-2 flex items-center gap-2 text-xs font-black uppercase tracking-widest text-zinc-500">
+          <Zap className="h-3.5 w-3.5 text-white" />
           Board energy · topped-up
         </h3>
         <div className="space-y-3">{renderItem("energyPack")}</div>
       </div>
 
-      {/* Power-ups */}
       <div>
-        <h3 className="mb-2 text-xs font-black uppercase tracking-widest text-amber-400">
+        <h3 className="mb-2 text-xs font-black uppercase tracking-widest text-zinc-500">
           Power-ups · topped-up
         </h3>
         <div className="space-y-3">
@@ -401,18 +346,16 @@ export function ShopPanel({
         </div>
       </div>
 
-      {/* Gifts */}
       <div>
-        <h3 className="mb-2 text-xs font-black uppercase tracking-widest text-amber-400">
+        <h3 className="mb-2 text-xs font-black uppercase tracking-widest text-zinc-500">
           Supply drops · topped-up
         </h3>
         <div className="space-y-3">{GIFT_IDS.map(renderItem)}</div>
       </div>
 
-      {/* Nations */}
       <div>
         <div className="mb-2 flex items-center justify-between">
-          <h3 className="text-xs font-black uppercase tracking-widest text-amber-400">
+          <h3 className="text-xs font-black uppercase tracking-widest text-zinc-500">
             Nations for sale
           </h3>
           <button
@@ -451,7 +394,7 @@ export function ShopPanel({
                       tokens
                     </div>
                   </div>
-                  <ShoppingCart className="h-4 w-4 shrink-0 text-amber-400" />
+                  <ShoppingCart className="h-4 w-4 shrink-0 text-white" />
                 </div>
                 <div className="mt-3 grid grid-cols-2 gap-2">
                   <button
@@ -461,7 +404,7 @@ export function ShopPanel({
                       spendableWardog < Number(n.listedPrice) - 0.001
                     }
                     onClick={() => void handleBuyNation(n, "wardog")}
-                    className="rounded-xl border border-red-500/50 bg-red-950/40 py-2.5 text-[0.65rem] font-black uppercase tracking-wider text-red-300 disabled:opacity-40"
+                    className="rounded-xl border border-zinc-600 bg-zinc-950 py-2.5 text-[0.65rem] font-black uppercase tracking-wider text-red-300 disabled:opacity-40"
                   >
                     {buyingKey === `${n.id}:wardog`
                       ? "…"
@@ -474,7 +417,7 @@ export function ShopPanel({
                       spendableWarcat < Number(n.listedPrice) - 0.001
                     }
                     onClick={() => void handleBuyNation(n, "warcat")}
-                    className="rounded-xl border border-violet-500/50 bg-violet-950/40 py-2.5 text-[0.65rem] font-black uppercase tracking-wider text-violet-300 disabled:opacity-40"
+                    className="rounded-xl border border-zinc-600 bg-zinc-950 py-2.5 text-[0.65rem] font-black uppercase tracking-wider text-violet-300 disabled:opacity-40"
                   >
                     {buyingKey === `${n.id}:warcat`
                       ? "…"

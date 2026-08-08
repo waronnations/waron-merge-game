@@ -4,18 +4,18 @@ import { TOKENS } from "@/lib/tokens";
 export function RewardTile({
   symbol,
   balance,
-  color,
+  tint,
 }: {
   symbol: string;
   balance: number;
-  color: string;
+  tint: string;
 }) {
   return (
     <div className="rounded-xl border border-zinc-700 bg-zinc-950 p-3">
-      <div className="text-[0.6rem] uppercase tracking-widest text-zinc-500">
+      <div className={`text-[0.6rem] uppercase tracking-widest ${tint}`}>
         {symbol}
       </div>
-      <div className="mt-1 text-lg font-black" style={{ color }}>
+      <div className="mt-1 text-lg font-black text-white">
         {balance.toFixed(2)}
       </div>
     </div>
@@ -32,12 +32,12 @@ export function ClaimBalanceTiles({
       <RewardTile
         symbol={TOKENS.wardog.symbol}
         balance={balances.wardog}
-        color={TOKENS.wardog.color ?? "#f59e0b"}
+        tint="text-red-300"
       />
       <RewardTile
         symbol={TOKENS.warcat.symbol}
         balance={balances.warcat}
-        color={TOKENS.warcat.color ?? "#38bdf8"}
+        tint="text-violet-300"
       />
     </div>
   );
