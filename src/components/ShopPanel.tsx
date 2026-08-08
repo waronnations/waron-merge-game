@@ -13,7 +13,7 @@ import {
 import { toast } from "sonner";
 import type { GameState } from "@/lib/game-state";
 import { SHOP_ITEMS, SHOP_ACTION, type ShopItemId } from "@/lib/constants";
-import { GIFT_BOXES, type GiftBoxId } from "@/lib/constants/gifts";
+import { GIFT_BOXES } from "@/lib/constants/gifts";
 import { haptic } from "@/lib/telegram";
 import { listNationsFn, buyNationFn } from "@/lib/nations.functions";
 import { usePayments } from "@/components/payments/PaymentProvider";
@@ -135,13 +135,6 @@ export function ShopPanel({
   const handleShopBuy = async (itemId: ShopItemId, payWith: PayToken) => {
     if (busyKey) return;
     const item = SHOP_ITEMS[itemId];
-    const balance = payWith === "wardog" ? wardog : warcat;
-    if (balance < item.cost - 0.001) {
-      toast.error(
-        payWith === "wardog" ? "Not enough $WARDOG" : "Not enough $WARCAT",
-      );
-      return;
-    }
 
     setBusyKey(`${itemId}:${payWith}`);
     try {
@@ -155,8 +148,17 @@ export function ShopPanel({
       await onBuy(itemId, payWith);
       haptic("heavy");
       toast.success(`${item.name} purchased!`);
-    } catch {
-      toast.error("Purchase failed");
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (msg.includes("insufficient_spendable")) {
+        toast.error("Need topped-up balance — use Top Up");
+      } else if (msg.includes("insufficient_tokens")) {
+        toast.error(
+          payWith === "wardog" ? "Not enough $WARDOG" : "Not enough $WARCAT",
+        );
+      } else {
+        toast.error("Purchase failed");
+      }
     } finally {
       setBusyKey(null);
     }
@@ -164,14 +166,6 @@ export function ShopPanel({
 
   const handleBuyNation = async (nation: ListedNation, payWith: PayToken) => {
     if (buyingKey || !nation.listedPrice) return;
-    const price = Number(nation.listedPrice);
-    const balance = payWith === "wardog" ? wardog : warcat;
-    if (balance < price - 0.001) {
-      toast.error(
-        payWith === "wardog" ? "Not enough $WARDOG" : "Not enough $WARCAT",
-      );
-      return;
-    }
 
     const key = `${nation.id}:${payWith}`;
     setBuyingKey(key);
@@ -191,11 +185,17 @@ export function ShopPanel({
       await loadMarketplace();
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "";
-      if (msg.includes("insufficient_tokens")) toast.error("Not enough tokens");
-      else if (msg.includes("not_for_sale")) toast.error("No longer for sale");
-      else if (msg.includes("must_leave_current_nation"))
+      if (msg.includes("insufficient_spendable")) {
+        toast.error("Need topped-up balance — use Top Up");
+      } else if (msg.includes("insufficient_tokens")) {
+        toast.error("Not enough tokens");
+      } else if (msg.includes("not_for_sale")) {
+        toast.error("No longer for sale");
+      } else if (msg.includes("must_leave_current_nation")) {
         toast.error("Leave your current nation first");
-      else toast.error("Purchase failed");
+      } else {
+        toast.error("Purchase failed");
+      }
     } finally {
       setBuyingKey(null);
     }
@@ -235,14 +235,14 @@ export function ShopPanel({
             <div className="text-sm font-black text-white">{item.name}</div>
             <div className="text-xs text-zinc-400">{item.desc}</div>
             <div className="mt-1 text-[0.65rem] font-bold uppercase tracking-wider text-zinc-500">
-              Cost · {item.cost} of one token
+              Cost · {item.cost} of one token (topped-up)
             </div>
           </div>
         </div>
         <div className="mt-3 grid grid-cols-2 gap-2">
           <button
             type="button"
-            disabled={!!busyKey || wardog < item.cost - 0.001}
+            disabled={!!busyKey}
             onClick={() => void handleShopBuy(id, "wardog")}
             className="flex items-center justify-center gap-1.5 rounded-xl border border-red-500/50 bg-red-950/40 py-2.5 text-[0.7rem] font-black uppercase tracking-wider text-red-300 disabled:opacity-40"
           >
@@ -253,7 +253,7 @@ export function ShopPanel({
           </button>
           <button
             type="button"
-            disabled={!!busyKey || warcat < item.cost - 0.001}
+            disabled={!!busyKey}
             onClick={() => void handleShopBuy(id, "warcat")}
             className="flex items-center justify-center gap-1.5 rounded-xl border border-violet-500/50 bg-violet-950/40 py-2.5 text-[0.7rem] font-black uppercase tracking-wider text-violet-300 disabled:opacity-40"
           >
@@ -295,6 +295,11 @@ export function ShopPanel({
             Disconnect
           </button>
         )}
+      </div>
+
+      {/* Clear rule banner */}
+      <div className="rounded-xl border border-amber-500/30 bg-amber-950/20 px-3 py-2 text-center text-[0.65rem] font-bold uppercase tracking-wider text-amber-300/90">
+        Operations use Topped-up balances only · Free merge rewards are claimable
       </div>
 
       {/* Power-ups */}
@@ -360,9 +365,7 @@ export function ShopPanel({
                 <div className="mt-3 grid grid-cols-2 gap-2">
                   <button
                     type="button"
-                    disabled={
-                      !!buyingKey || wardog < Number(n.listedPrice) - 0.001
-                    }
+                    disabled={!!buyingKey}
                     onClick={() => void handleBuyNation(n, "wardog")}
                     className="rounded-xl border border-red-500/50 bg-red-950/40 py-2.5 text-[0.65rem] font-black uppercase tracking-wider text-red-300 disabled:opacity-40"
                   >
@@ -372,9 +375,7 @@ export function ShopPanel({
                   </button>
                   <button
                     type="button"
-                    disabled={
-                      !!buyingKey || warcat < Number(n.listedPrice) - 0.001
-                    }
+                    disabled={!!buyingKey}
                     onClick={() => void handleBuyNation(n, "warcat")}
                     className="rounded-xl border border-violet-500/50 bg-violet-950/40 py-2.5 text-[0.65rem] font-black uppercase tracking-wider text-violet-300 disabled:opacity-40"
                   >
@@ -390,8 +391,8 @@ export function ShopPanel({
       </div>
 
       <p className="text-center text-[0.6rem] leading-relaxed text-zinc-600">
-        Shop requires a connected wallet (once, until you disconnect). Spend is
-        always $WARDOG or $WARCAT — never native TON.
+        Shop & marketplace require topped-up $WARDOG / $WARCAT (use Top Up).  
+        Free merge-board earnings are claimable only. Never native TON.
       </p>
     </div>
   );

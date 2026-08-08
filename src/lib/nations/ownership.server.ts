@@ -3,8 +3,11 @@
  * Server-only Nations ownership: claim/transfer/sell/buy.
  * ONE NATION RULE: buyer must leave their current nation before buying another.
  *
- * buyNation: spendable first; playable remainder only when treasury is healthy.
- * Never TON.
+ * HARD RULE:
+ *   · buyNation requires topped-up (spendable) jettons only.
+ *   · Free-earned playable tokens can ONLY be claimed to ClaimTreasury.
+ *   · Platform tax still goes through applyDynamicTax + recordTreasuryDeposit.
+ *   · Never TON.
  */
 
 import { sql } from "@/lib/db.server";
@@ -18,7 +21,6 @@ import {
   applyDynamicTax,
   recordTreasuryDeposit,
   getClaimedReserve,
-  getTreasuryHealth,
 } from "@/lib/treasury.server";
 import {
   getSpendableBalances,
@@ -112,6 +114,8 @@ export async function unlistNation(userId: number) {
  * Buy a listed nation.
  * Seller receives the listed price in the same token the buyer paid with.
  * Platform tax is taken from the same token and deposited to the Claim Treasury.
+ *
+ * HARD RULE: buyer must pay entirely from topped-up (spendable) jettons.
  */
 export async function buyNation(
   buyerId: number,
@@ -165,56 +169,28 @@ export async function buyNation(
   const platformTax = await applyDynamicTax(price * MARKETPLACE_TAX_RATE, payWith);
   const totalCost = normalizeToken(price + platformTax);
 
-  const health = await getTreasuryHealth();
-  const allowPlayable =
-    health.zone === "green" || health.zone === "yellow";
-
-  const reserve = await getClaimedReserve(buyerId);
-  const buyerWardog = Math.max(
-    0,
-    Number(buyerProg.wardog_tokens) - reserve.wardog,
-  );
-  const buyerWarcat = Math.max(
-    0,
-    Number(buyerProg.warcat_tokens) - reserve.warcat,
-  );
-  const playable = payWith === "wardog" ? buyerWardog : buyerWarcat;
-
+  // HARD RULE: spendable only
   const spendable = await getSpendableBalances(buyerId);
   const haveSpendable =
     payWith === "wardog"
       ? spendable.spendableWardog
       : spendable.spendableWarcat;
 
-  const pool = allowPlayable ? playable + haveSpendable : haveSpendable;
-  if (pool < totalCost - 1e-6) {
-    throw new Error(
-      allowPlayable ? "insufficient_tokens" : "insufficient_spendable",
-    );
+  if (haveSpendable < totalCost - 1e-6) {
+    throw new Error("insufficient_spendable");
   }
 
-  const fromSpendable = Math.min(haveSpendable, totalCost);
-  const fromPlayable = normalizeToken(totalCost - fromSpendable);
+  const fromSpendable = totalCost;
+  const fromPlayable = 0;
 
-  if (fromSpendable > 1e-9) {
-    const d = await debitSpendable(
-      buyerId,
-      payWith as TopupToken,
-      fromSpendable,
-    );
-    if (!d.ok) throw new Error("insufficient_spendable");
-  }
+  const d = await debitSpendable(
+    buyerId,
+    payWith as TopupToken,
+    fromSpendable,
+  );
+  if (!d.ok) throw new Error("insufficient_spendable");
 
-  const spendWardog = payWith === "wardog" ? fromPlayable : 0;
-  const spendWarcat = payWith === "warcat" ? fromPlayable : 0;
-
-  const buyerState = {
-    ...(buyerProg.state as any),
-    wardogTokens: subTokens(buyerProg.wardog_tokens, spendWardog),
-    warcatTokens: subTokens(buyerProg.warcat_tokens, spendWarcat),
-  };
-  await writeProgress(buyerId, buyerState, { touchSyncClock: false });
-
+  // Seller receives the full listed price (in playable ledger)
   const sellerWardog = payWith === "wardog" ? normalizeToken(price) : 0;
   const sellerWarcat = payWith === "warcat" ? normalizeToken(price) : 0;
 
@@ -222,8 +198,8 @@ export async function buyNation(
   if (sellerProg) {
     const sellerState = {
       ...(sellerProg.state as any),
-      wardogTokens: addTokens(sellerProg.wardog_tokens, sellerWardog),
-      warcatTokens: addTokens(sellerProg.warcat_tokens, sellerWarcat),
+      wardogTokens: addTokens(Number(sellerProg.wardog_tokens ?? 0), sellerWardog),
+      warcatTokens: addTokens(Number(sellerProg.warcat_tokens ?? 0), sellerWarcat),
     };
     await writeProgress(sellerId, sellerState, { touchSyncClock: false });
   }
@@ -241,8 +217,7 @@ export async function buyNation(
       platformTax,
       payWith,
       fromSpendable,
-      fromPlayable,
-      treasuryZone: health.zone,
+      fromPlayable: 0,
     },
   });
 
@@ -263,14 +238,7 @@ export async function buyNation(
   `;
 
   if (!transfer.rowCount || transfer.rowCount === 0) {
-    // Race lost — refund playable portion only (spendable refund is a follow-up if needed)
-    const refundState = {
-      ...(buyerProg.state as any),
-      wardogTokens: normalizeToken(buyerProg.wardog_tokens),
-      warcatTokens: normalizeToken(buyerProg.warcat_tokens),
-    };
-    await writeProgress(buyerId, refundState, { touchSyncClock: false });
-    // Note: spendable debit is not auto-refunded on race; rare; operator can credit
+    // Race lost — operator can manually credit spendable if needed (rare)
     throw new Error("not_for_sale");
   }
 
@@ -305,7 +273,7 @@ export async function buyNation(
     totalCost,
     payWith,
     fromSpendable,
-    fromPlayable,
+    fromPlayable: 0,
   });
   await recalculateReputation(nationId);
 

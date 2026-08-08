@@ -27,7 +27,7 @@ import { ClaimHistoryList } from "@/components/claim/ClaimHistoryList";
 
 /**
  * Payload written for parent BASE / HUD sync.
- * Parent should set spendable balances from this (not lifetime totals).
+ * Parent should set claimable balances from this (not top-up spendable).
  */
 export type ClaimBalanceSyncPayload = {
   wardogTokens: number;
@@ -257,6 +257,20 @@ export function ClaimPanel({
 
       <TreasuryCard />
 
+      {/* Hard rule explanation */}
+      <div className="rounded-xl border border-emerald-500/25 bg-emerald-950/20 px-3 py-2.5 text-[0.65rem] leading-relaxed text-emerald-100/90">
+        <p className="font-black uppercase tracking-wider text-emerald-300">
+          Two balances
+        </p>
+        <p className="mt-1 text-emerald-100/70">
+          <strong className="text-emerald-200">Claimable</strong> = free rewards
+          from the merge board. Claim them here to the Claim Treasury.
+          <br />
+          <strong className="text-emerald-200">Topped-up</strong> = jettons you
+          deposited. Required for shop, energy recover, nations & operations.
+        </p>
+      </div>
+
       <div className="flex gap-3 rounded-2xl border border-amber-500/30 bg-amber-950/25 p-3">
         <Info className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
         <div className="space-y-1 text-[0.7rem] leading-relaxed text-amber-100/90">
@@ -318,7 +332,7 @@ export function ClaimPanel({
       {/* WARDOG claim */}
       <div className="space-y-3 rounded-2xl border border-zinc-700 bg-zinc-900/80 p-4">
         <div className="text-xs font-black uppercase tracking-widest text-amber-400">
-          Claim {TOKENS.wardog.symbol}
+          Claim {TOKENS.wardog.symbol} (merge rewards)
         </div>
         <ClaimAmountControls
           token="wardog"
@@ -351,7 +365,7 @@ export function ClaimPanel({
       {/* WARCAT claim */}
       <div className="space-y-3 rounded-2xl border border-zinc-700 bg-zinc-900/80 p-4">
         <div className="text-xs font-black uppercase tracking-widest text-sky-400">
-          Claim {TOKENS.warcat.symbol}
+          Claim {TOKENS.warcat.symbol} (merge rewards)
         </div>
         <ClaimAmountControls
           token="warcat"

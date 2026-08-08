@@ -1,11 +1,16 @@
 // src/lib/nations/vault.server.ts
 /**
  * Vault, buffs, protection, traitor redemption & invite rewards.
- * Server-only. All economy actions stay authoritative:
- *  · player spends: spendable first; playable (totals − claimed) only when treasury is healthy
- *  · every fee runs through the live treasury multiplier
- *  · the taxed delta is recorded as a pending treasury deposit
+ * Server-only. All economy actions stay authoritative.
+ *
+ * HARD RULE:
+ *   · Player spends require topped-up (spendable) jettons only.
+ *   · Free-earned playable tokens can ONLY be claimed to ClaimTreasury.
+ *   · Every fee still runs through the live treasury multiplier.
+ *   · The taxed delta is recorded as a pending treasury deposit.
+ *   · Claims and top-up balances remain completely untouched.
  */
+
 import { sql } from "@/lib/db.server";
 import {
   NATION_BUFFS,
@@ -25,7 +30,6 @@ import {
   quoteDynamicTax,
   recordTreasuryDeposit,
   getClaimedReserve,
-  getTreasuryHealth,
 } from "@/lib/treasury.server";
 import {
   getSpendableBalances,
@@ -41,7 +45,7 @@ import {
 import { recalculateReputation } from "@/lib/nations/reputation.server";
 import { logNationEvent } from "@/lib/nations/history.server";
 
-/** Playable balances = ledger totals − claimed reserve. */
+/** Playable balances = ledger totals − claimed reserve (kept for ledger safety). */
 async function loadPlayable(userId: number) {
   const prev = await loadProgress(userId);
   if (!prev) throw new Error("no_progress");
@@ -59,10 +63,11 @@ async function loadPlayable(userId: number) {
 }
 
 /**
- * Prefer spendable; if treasury is healthy (green/yellow), allow playable remainder.
- * Throws insufficient_spendable | insufficient_tokens.
+ * HARD RULE: spend ONLY from topped-up (spendable) balances.
+ * Never touches playable / claimed vault.
+ * Throws "insufficient_spendable" if the player does not have enough topped-up jettons.
  */
-async function spendPlayableTokens(
+async function spendSpendableOnly(
   userId: number,
   wardog: number,
   warcat: number,
@@ -71,55 +76,23 @@ async function spendPlayableTokens(
   const c = normalizeToken(Math.max(0, Number(warcat) || 0));
   if (w <= 0 && c <= 0) return;
 
-  const health = await getTreasuryHealth();
-  const allowPlayable =
-    health.zone === "green" || health.zone === "yellow";
-
-  const { state, reserve, playableWardog, playableWarcat } =
-    await loadPlayable(userId);
-
   const spendable = await getSpendableBalances(userId);
 
-  let needW = w;
-  let needC = c;
-  const fromSpendableW = Math.min(spendable.spendableWardog, needW);
-  const fromSpendableC = Math.min(spendable.spendableWarcat, needC);
-  needW = normalizeToken(needW - fromSpendableW);
-  needC = normalizeToken(needC - fromSpendableC);
-
-  if (fromSpendableW > 1e-9) {
-    const d = await debitSpendable(
-      userId,
-      "wardog" as TopupToken,
-      fromSpendableW,
-    );
-    if (!d.ok) throw new Error("insufficient_spendable");
-  }
-  if (fromSpendableC > 1e-9) {
-    const d = await debitSpendable(
-      userId,
-      "warcat" as TopupToken,
-      fromSpendableC,
-    );
+  if (w > 0) {
+    if (spendable.spendableWardog < w - 1e-6) {
+      throw new Error("insufficient_spendable");
+    }
+    const d = await debitSpendable(userId, "wardog" as TopupToken, w);
     if (!d.ok) throw new Error("insufficient_spendable");
   }
 
-  if (needW <= 1e-9 && needC <= 1e-9) return;
-
-  if (!allowPlayable) throw new Error("insufficient_spendable");
-
-  if (playableWardog < needW - 1e-6 || playableWarcat < needC - 1e-6) {
-    throw new Error("insufficient_tokens");
+  if (c > 0) {
+    if (spendable.spendableWarcat < c - 1e-6) {
+      throw new Error("insufficient_spendable");
+    }
+    const d = await debitSpendable(userId, "warcat" as TopupToken, c);
+    if (!d.ok) throw new Error("insufficient_spendable");
   }
-
-  state.wardogTokens = normalizeToken(
-    subTokens(playableWardog, needW) + reserve.wardog,
-  );
-  state.warcatTokens = normalizeToken(
-    subTokens(playableWarcat, needC) + reserve.warcat,
-  );
-
-  await writeProgress(userId, state, { touchSyncClock: false });
 }
 
 export async function donateToVault(
@@ -142,12 +115,14 @@ export async function donateToVault(
   const quoteW = w > 0 ? await quoteDynamicTax(w) : null;
   const quoteC = c > 0 ? await quoteDynamicTax(c) : null;
 
-  await spendPlayableTokens(
+  // HARD RULE: only topped-up
+  await spendSpendableOnly(
     userId,
     quoteW?.final ?? 0,
     quoteC?.final ?? 0,
   );
 
+  // Nation vault receives the ORIGINAL (pre-tax) amount
   await sql`
     UPDATE nations
     SET vault_wardog = vault_wardog + ${w},
@@ -422,7 +397,8 @@ export async function redeemTraitor(
     const base = payWith === "wardog" ? priceW : priceC;
     const quote = await quoteDynamicTax(base);
 
-    await spendPlayableTokens(
+    // HARD RULE: only topped-up
+    await spendSpendableOnly(
       userId,
       payWith === "wardog" ? quote.final : 0,
       payWith === "warcat" ? quote.final : 0,
