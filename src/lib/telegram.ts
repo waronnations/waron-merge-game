@@ -135,12 +135,10 @@ export function shareUrl(url: string, text: string) {
   const tg = getTelegram();
 
   try {
-    // Native path — works inside Telegram Mini Apps
     if (tg?.openTelegramLink && webAppVersion() >= 6.1) {
       tg.openTelegramLink(share);
       return;
     }
-    // Fallback: open as external link if available
     if (tg?.openLink) {
       tg.openLink(share);
       return;
@@ -149,4 +147,51 @@ export function shareUrl(url: string, text: string) {
   } catch {
     window.location.href = share;
   }
+}
+
+/** Official community group / channel */
+export const WARON_COMMUNITY = "https://t.me/waronnations";
+
+/**
+ * Open any t.me link inside Telegram (Mini App-safe).
+ */
+export function openTelegramUrl(url: string) {
+  if (typeof window === "undefined") return;
+  const tg = getTelegram();
+  try {
+    if (tg?.openTelegramLink && webAppVersion() >= 6.1) {
+      tg.openTelegramLink(url);
+      return;
+    }
+    if (tg?.openLink) {
+      tg.openLink(url);
+      return;
+    }
+    window.open(url, "_blank", "noopener,noreferrer");
+  } catch {
+    window.location.href = url;
+  }
+}
+
+/** Open the War On Nations Telegram group / channel */
+export function openWaronCommunity() {
+  openTelegramUrl(WARON_COMMUNITY);
+}
+
+/**
+ * Open Telegram share sheet with referral link + message.
+ */
+export function shareReferralInvite(referralLink: string, extraText?: string) {
+  const text =
+    extraText?.trim() ||
+    [
+      "⚔️ WAR ON NATIONS is live.",
+      "",
+      "Merge WARDOG & WARCAT. Claim countries. Feed the treasury.",
+      "",
+      "Join my squad (open inside Telegram):",
+      referralLink,
+    ].join("\n");
+
+  shareUrl(referralLink, text);
 }

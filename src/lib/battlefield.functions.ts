@@ -1,6 +1,6 @@
 // src/lib/battlefield.functions.ts
 /**
- * Client-callable OPS Battlefield surface (next-level).
+ * Client-callable OPS Battlefield surface.
  * Mutations require auth + rate limits.
  * Buys: spendable-only + dynamic tax → ClaimTreasury.
  */
@@ -178,7 +178,8 @@ export const lookupBattlefieldTargetFn = createServerFn({ method: "GET" })
     z.object({ query: z.string().min(1).max(64) }).parse(input),
   )
   .handler(async ({ data }) => {
-    if (!hasDatabase()) return { ok: false as const, error: "database_unavailable" };
+    if (!hasDatabase())
+      return { ok: false as const, error: "database_unavailable" };
     await ensureSchema();
     await ensureBattlefieldSchema();
     await requireUserId();

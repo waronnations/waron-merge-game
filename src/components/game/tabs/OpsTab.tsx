@@ -10,12 +10,23 @@ import {
   Radio,
   Shield,
   Search,
+  Users,
+  ExternalLink,
+  Share2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { TabHero } from "@/components/game/TabHero";
 import { TasksPanel, DailyQuestsPanel } from "@/components/Panels";
 import type { GameState } from "@/lib/game-state";
-import { haptic } from "@/lib/telegram";
+import {
+  haptic,
+  shareReferralInvite,
+  openWaronCommunity,
+} from "@/lib/telegram";
+import {
+  buildReferralLink,
+  buildReferralShareText,
+} from "@/lib/referrals.shared";
 import {
   BATTLEFIELD_WEAPONS,
   type BattlefieldWeaponId,
@@ -120,6 +131,31 @@ export function OpsTab({
   const [previewLoading, setPreviewLoading] = useState(false);
   const [strikeWeapon, setStrikeWeapon] = useState<BattlefieldWeaponId>("knife");
   const [tick, setTick] = useState(0);
+
+  const referralCode = state.referralCode?.trim() || "";
+  const referralLink = referralCode
+    ? buildReferralLink(referralCode)
+    : "https://t.me/waronnationsgamebot";
+
+  const openShareReferral = useCallback(() => {
+    const text = referralCode
+      ? buildReferralShareText(referralCode)
+      : [
+          "⚔️ WAR ON NATIONS is live.",
+          "Merge WARDOG & WARCAT. Climb ranks. Earn jettons.",
+          "",
+          "Join the pack:",
+          referralLink,
+        ].join("\n");
+    shareReferralInvite(referralLink, text);
+    haptic("medium");
+    toast.success("Opening Telegram share…");
+  }, [referralCode, referralLink]);
+
+  const openGroup = () => {
+    openWaronCommunity();
+    haptic("light");
+  };
 
   const quoteMap = useMemo(() => {
     const m = new Map<string, Quote>();
@@ -248,6 +284,7 @@ export function OpsTab({
         toast.success(
           `HIT · ${res.victimName ?? "target"} · +${res.gloryGained} glory · +${fmtToken(res.tokenReward)} tokens`,
         );
+        setTimeout(() => openShareReferral(), 600);
       } else {
         toast.message(`Miss on ${res.victimName ?? "target"} — weapon spent`);
       }
@@ -383,9 +420,7 @@ export function OpsTab({
                           <div className="mt-1 text-[0.6rem] font-bold uppercase tracking-wider text-zinc-500">
                             Hit {Math.round(w.hitChance * 100)}% · CD{" "}
                             {w.cooldownSec}s · Own {owned}
-                            {cd > Date.now()
-                              ? ` · ${formatCooldown(cd)}`
-                              : ""}
+                            {cd > Date.now() ? ` · ${formatCooldown(cd)}` : ""}
                           </div>
                           <div className="mt-0.5 text-[0.6rem] text-zinc-500">
                             Base {fmtToken(w.cost)}
@@ -578,6 +613,47 @@ export function OpsTab({
                   ))}
                 </div>
               )}
+            </div>
+
+            {/* Rally / share — end of OPS */}
+            <div className="rounded-2xl border border-amber-500/30 bg-gradient-to-br from-amber-950/40 to-zinc-900 p-4">
+              <div className="mb-2 flex items-center gap-2">
+                <Users className="h-4 w-4 text-amber-400" />
+                <h3 className="text-xs font-black uppercase tracking-widest text-amber-200">
+                  Rally the pack
+                </h3>
+              </div>
+              <p className="mb-3 text-[0.7rem] leading-relaxed text-zinc-400">
+                Share your recruit link or jump into the official group. Recruits
+                that play count toward referral rewards.
+              </p>
+              {referralCode ? (
+                <div className="mb-3 break-all rounded-xl border border-zinc-700 bg-zinc-950/80 px-3 py-2 font-mono text-[0.7rem] text-amber-400/90">
+                  {referralLink}
+                </div>
+              ) : (
+                <div className="mb-3 text-[0.65rem] text-zinc-500">
+                  Sign in to load your personal referral link.
+                </div>
+              )}
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={openShareReferral}
+                  className="flex items-center justify-center gap-2 rounded-xl bg-amber-500 py-3 text-xs font-black uppercase tracking-wider text-black hover:bg-amber-400"
+                >
+                  <Share2 className="h-3.5 w-3.5" />
+                  Share referral
+                </button>
+                <button
+                  type="button"
+                  onClick={openGroup}
+                  className="flex items-center justify-center gap-2 rounded-xl border border-zinc-600 bg-zinc-950 py-3 text-xs font-black uppercase tracking-wider text-zinc-200 hover:border-zinc-400"
+                >
+                  <ExternalLink className="h-3.5 w-3.5" />
+                  @waronnations
+                </button>
+              </div>
             </div>
           </>
         )}

@@ -412,10 +412,9 @@ export async function battlefieldStrike(
   let gloryGained = 0;
   let tokenReward = 0;
 
-  const attackerLabel =
-    (me.rows[0].username as string)
-      ? `@${me.rows[0].username}`
-      : (me.rows[0].first_name as string) || `tg:${myTg}`;
+  const attackerLabel = (me.rows[0].username as string)
+    ? `@${me.rows[0].username}`
+    : (me.rows[0].first_name as string) || `tg:${myTg}`;
 
   if (hit) {
     gloryGained = weapon.gloryOnHit;

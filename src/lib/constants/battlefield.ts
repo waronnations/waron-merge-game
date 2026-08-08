@@ -1,7 +1,7 @@
 // src/lib/constants/battlefield.ts
 /**
  * OPS Battlefield — knives, guns, PvP strikes.
- * Purchases and strikes use topped-up (spendable) balances only.
+ * Purchases use topped-up (spendable) balances only.
  * Taxes flow to ClaimTreasury via applyDynamicTax + recordTreasuryDeposit.
  */
 
@@ -17,7 +17,7 @@ export type BattlefieldWeapon = {
   hitChance: number;
   /** Glory awarded to attacker on hit */
   gloryOnHit: number;
-  /** Small token reward to attacker on hit (playable ledger — claimable later) */
+  /** Small token reward to attacker on hit (playable — claimable later) */
   tokenRewardOnHit: number;
   /** Glory taken from victim on hit (floored at 0) */
   gloryDrainOnHit: number;
