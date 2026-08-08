@@ -31,33 +31,15 @@ export function TargetStage({
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: -8 }}
           transition={{ type: "spring", stiffness: 380, damping: 28 }}
-          className={cn(
-            "overflow-hidden rounded-2xl border bg-gradient-to-b from-zinc-900 via-zinc-950 to-black shadow-xl",
-            selected.isProtected
-              ? "border-emerald-500/40 shadow-emerald-950/40"
-              : "border-red-500/30 shadow-red-950/40",
-          )}
+          className="overflow-hidden rounded-2xl border border-zinc-700 bg-zinc-900 shadow-xl"
         >
           <div className="relative flex flex-col items-center px-4 pb-2 pt-6">
-            <div
-              className={cn(
-                "pointer-events-none absolute inset-0",
-                selected.isProtected
-                  ? "bg-[radial-gradient(ellipse_at_center,_rgba(16,185,129,0.15)_0%,_transparent_65%)]"
-                  : "bg-[radial-gradient(ellipse_at_center,_rgba(239,68,68,0.18)_0%,_transparent_65%)]",
-              )}
-            />
             <motion.div
               key={`flag-${selected.id}`}
               initial={{ scale: 0.6, rotate: -8, opacity: 0 }}
               animate={{ scale: 1, rotate: 0, opacity: 1 }}
               transition={{ type: "spring", stiffness: 260, damping: 18 }}
-              className={cn(
-                "relative z-10 text-[5.5rem] leading-none",
-                selected.isProtected
-                  ? "drop-shadow-[0_0_28px_rgba(16,185,129,0.4)]"
-                  : "drop-shadow-[0_0_28px_rgba(239,68,68,0.45)]",
-              )}
+              className="relative z-10 text-[5.5rem] leading-none"
             >
               {selected.emblem}
             </motion.div>
@@ -73,30 +55,31 @@ export function TargetStage({
             </div>
             <div className="relative z-10 mt-3 flex flex-wrap justify-center gap-2">
               {selected.isProtected && (
-                <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/40 bg-emerald-500/15 px-2.5 py-1 text-[10px] font-bold text-emerald-300">
+                <span className="inline-flex items-center gap-1 rounded-full border border-zinc-600 bg-zinc-950 px-2.5 py-1 text-[10px] font-bold text-emerald-400">
                   <Shield className="h-3 w-3" />
                   24h Protected
                 </span>
               )}
-              <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-[10px] font-bold text-amber-300">
+              <span className="rounded-full border border-zinc-600 bg-zinc-950 px-2.5 py-1 text-[10px] font-bold text-zinc-300">
                 ☢ Arsenal {Number(selected.nukesOwnedTotal ?? 0)}
               </span>
-              <span className="rounded-full border border-red-500/30 bg-red-500/10 px-2.5 py-1 text-[10px] font-bold text-red-300">
+              <span className="rounded-full border border-zinc-600 bg-zinc-950 px-2.5 py-1 text-[10px] font-bold text-red-300">
                 💥 Hit {Number(selected.timesNuked ?? 0)}×
               </span>
             </div>
           </div>
 
-          <div className="border-t border-zinc-800/80 px-4 py-4">
+          <div className="border-t border-zinc-800 px-4 py-4">
             {selected.isProtected ? (
-              <p className="text-center text-xs text-emerald-300/90">
-                This nation paid for 24h protection. Strikes are blocked until
-                protection expires.
+              <p className="text-center text-xs text-zinc-400">
+                This nation paid for{" "}
+                <span className="text-emerald-400">24h protection</span>.
+                Strikes are blocked until protection expires.
               </p>
             ) : (
               <p className="text-center text-xs text-zinc-400">
                 On impact{" "}
-                <span className="font-semibold text-amber-300">
+                <span className="font-semibold text-white">
                   {NUKE_TRANSFER_VALUE}
                 </span>{" "}
                 tokens enter this nation’s vault for rebuilding.
@@ -110,7 +93,7 @@ export function TargetStage({
               className={cn(
                 "mt-4 flex w-full items-center justify-center gap-2 rounded-xl py-3.5 text-sm font-black uppercase tracking-widest transition-all",
                 canLaunch
-                  ? "bg-gradient-to-r from-red-600 via-orange-600 to-amber-500 text-white shadow-lg shadow-red-900/50 active:scale-[0.98]"
+                  ? "bg-white text-black hover:bg-zinc-200 active:scale-[0.98]"
                   : "cursor-not-allowed bg-zinc-800 text-zinc-500",
               )}
             >

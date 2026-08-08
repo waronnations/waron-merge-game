@@ -6,7 +6,7 @@ export function TraitorBadge({ className }: { className?: string }) {
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-0.5 rounded-full bg-red-950/80 border border-red-500/50 px-1.5 py-0.5 text-[0.6rem] font-black uppercase tracking-wider text-red-400",
+        "inline-flex items-center gap-0.5 rounded-full border border-zinc-600 bg-zinc-950 px-1.5 py-0.5 text-[0.6rem] font-black uppercase tracking-wider text-red-300",
         className,
       )}
     >
@@ -18,7 +18,7 @@ export function TraitorBadge({ className }: { className?: string }) {
 
 export function OfficerBadge() {
   return (
-    <span className="inline-flex items-center gap-0.5 rounded-full bg-blue-950/80 border border-blue-500/50 px-1.5 py-0.5 text-[0.6rem] font-black uppercase tracking-wider text-blue-400">
+    <span className="inline-flex items-center gap-0.5 rounded-full border border-zinc-600 bg-zinc-950 px-1.5 py-0.5 text-[0.6rem] font-black uppercase tracking-wider text-white">
       <Star className="h-2.5 w-2.5" />
       Officer
     </span>

@@ -22,14 +22,14 @@ import type { Nation, MyNation } from "./use-nations-panel";
 function FactionBadge({ faction }: { faction?: "wardog" | "warcat" | null }) {
   if (faction === "wardog") {
     return (
-      <span className="rounded border border-orange-500/40 bg-orange-950/80 px-1.5 py-0.5 text-[0.55rem] font-black uppercase tracking-wider text-orange-300">
+      <span className="rounded border border-zinc-600 bg-zinc-950 px-1.5 py-0.5 text-[0.55rem] font-black uppercase tracking-wider text-red-300">
         WARDOG
       </span>
     );
   }
   if (faction === "warcat") {
     return (
-      <span className="rounded border border-purple-500/40 bg-purple-950/80 px-1.5 py-0.5 text-[0.55rem] font-black uppercase tracking-wider text-purple-300">
+      <span className="rounded border border-zinc-600 bg-zinc-950 px-1.5 py-0.5 text-[0.55rem] font-black uppercase tracking-wider text-violet-300">
         WARCAT
       </span>
     );
@@ -86,10 +86,9 @@ export function NationsList({
 
   return (
     <>
-      {/* Header */}
       <div className="flex items-center justify-between px-1">
         <div className="flex items-center gap-2">
-          <Flag className="h-5 w-5 text-amber-500" />
+          <Flag className="h-5 w-5 text-white" />
           <h2 className="text-sm font-black uppercase tracking-widest text-white">
             Nations
           </h2>
@@ -106,19 +105,18 @@ export function NationsList({
         </button>
       </div>
 
-      {/* Your Nation Card */}
       {myNation ? (
         <div
           className={cn(
             "rounded-2xl border p-4",
             myNation.isTraitor
-              ? "border-red-500/40 bg-red-950/20"
-              : "border-amber-500/30 bg-amber-950/20",
+              ? "border-zinc-600 bg-zinc-900"
+              : "border-zinc-700 bg-zinc-900",
           )}
         >
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-center gap-3">
-              <div className="grid h-12 w-12 place-items-center rounded-xl bg-zinc-900 text-2xl">
+              <div className="grid h-12 w-12 place-items-center rounded-xl bg-zinc-950 text-2xl">
                 {myNation.emblem || "🏳️"}
               </div>
               <div>
@@ -127,13 +125,13 @@ export function NationsList({
                     {myNation.name}
                   </span>
                   {myNation.myRole === "leader" && (
-                    <Crown className="h-4 w-4 text-amber-400" />
+                    <Crown className="h-4 w-4 text-white" />
                   )}
                   {myNation.myRole === "officer" && <OfficerBadge />}
                   {myNation.isTraitor && <TraitorBadge />}
                   <FactionBadge faction={myNation.faction} />
                   {myNation.isProtected && (
-                    <span className="inline-flex items-center gap-0.5 rounded-full border border-emerald-500/50 bg-emerald-950/80 px-1.5 py-0.5 text-[0.6rem] font-black uppercase tracking-wider text-emerald-400">
+                    <span className="inline-flex items-center gap-0.5 rounded-full border border-zinc-600 bg-zinc-950 px-1.5 py-0.5 text-[0.6rem] font-black uppercase tracking-wider text-emerald-400">
                       <Shield className="h-2.5 w-2.5" />
                       Protected
                     </span>
@@ -143,12 +141,7 @@ export function NationsList({
                   [{myNation.tag}] · {myNation.memberCount} members
                 </div>
                 {rep && (
-                  <div
-                    className={cn(
-                      "mt-0.5 text-[0.65rem] font-bold uppercase tracking-wider",
-                      rep.color,
-                    )}
-                  >
+                  <div className="mt-0.5 text-[0.65rem] font-bold uppercase tracking-wider text-zinc-300">
                     {rep.tier} · {myNation.reputation || 0} rep
                   </div>
                 )}
@@ -157,7 +150,7 @@ export function NationsList({
             <button
               onClick={handleLeave}
               disabled={leaving}
-              className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-[0.65rem] font-bold uppercase tracking-wider text-zinc-300 hover:border-red-500/50 hover:text-red-400 disabled:opacity-50"
+              className="rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-1.5 text-[0.65rem] font-bold uppercase tracking-wider text-zinc-300 hover:border-zinc-500 hover:text-white disabled:opacity-50"
             >
               {leaving ? (
                 "..."
@@ -171,17 +164,17 @@ export function NationsList({
           </div>
 
           {activeBuff && (
-            <div className="mt-3 flex items-center gap-2 rounded-xl border border-sky-500/40 bg-sky-950/30 px-3 py-2">
-              <Zap className="h-4 w-4 text-sky-400" />
+            <div className="mt-3 flex items-center gap-2 rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2">
+              <Zap className="h-4 w-4 text-white" />
               <div className="text-xs">
-                <span className="font-bold text-sky-300">{activeBuff.name}</span>
+                <span className="font-bold text-white">{activeBuff.name}</span>
                 <span className="text-zinc-400"> — {activeBuff.desc}</span>
               </div>
             </div>
           )}
 
           <div className="mt-3 grid grid-cols-3 gap-2 text-center">
-            <div className="rounded-lg bg-black/40 px-2 py-1.5">
+            <div className="rounded-lg bg-zinc-950 px-2 py-1.5">
               <div className="text-[0.6rem] uppercase tracking-wider text-zinc-500">
                 Vault
               </div>
@@ -190,15 +183,15 @@ export function NationsList({
                 {Math.floor(myNation.vaultWarcat || 0)}
               </div>
             </div>
-            <div className="rounded-lg bg-black/40 px-2 py-1.5">
+            <div className="rounded-lg bg-zinc-950 px-2 py-1.5">
               <div className="text-[0.6rem] uppercase tracking-wider text-zinc-500">
                 Weekly
               </div>
-              <div className="text-xs font-bold text-amber-300">
+              <div className="text-xs font-bold text-white">
                 {Math.floor(myNation.myWeeklyGlory || 0)}
               </div>
             </div>
-            <div className="rounded-lg bg-black/40 px-2 py-1.5">
+            <div className="rounded-lg bg-zinc-950 px-2 py-1.5">
               <div className="text-[0.6rem] uppercase tracking-wider text-zinc-500">
                 Role
               </div>
@@ -215,7 +208,7 @@ export function NationsList({
                   onInvite();
                   haptic("medium");
                 }}
-                className="rounded-lg border border-amber-500/50 bg-amber-950/40 px-3 py-1.5 text-[0.65rem] font-bold uppercase tracking-wider text-amber-300 hover:bg-amber-950/70"
+                className="rounded-lg border border-zinc-600 bg-zinc-950 px-3 py-1.5 text-[0.65rem] font-bold uppercase tracking-wider text-white hover:border-zinc-400"
               >
                 <span className="flex items-center gap-1">
                   <Users className="h-3 w-3" />
@@ -237,7 +230,7 @@ export function NationsList({
                 ) : (
                   <button
                     onClick={() => setShowListModal(true)}
-                    className="rounded-lg border border-emerald-600/50 bg-emerald-950/40 px-3 py-1.5 text-[0.65rem] font-bold uppercase tracking-wider text-emerald-400 hover:bg-emerald-950/70"
+                    className="rounded-lg border border-zinc-600 bg-zinc-950 px-3 py-1.5 text-[0.65rem] font-bold uppercase tracking-wider text-white hover:border-zinc-400"
                   >
                     <span className="flex items-center gap-1">
                       <Tag className="h-3 w-3" />
@@ -247,7 +240,7 @@ export function NationsList({
                 )}
                 <button
                   onClick={openTransferModal}
-                  className="rounded-lg border border-blue-600/50 bg-blue-950/40 px-3 py-1.5 text-[0.65rem] font-bold uppercase tracking-wider text-blue-400 hover:bg-blue-950/70"
+                  className="rounded-lg border border-zinc-600 bg-zinc-950 px-3 py-1.5 text-[0.65rem] font-bold uppercase tracking-wider text-white hover:border-zinc-400"
                 >
                   <span className="flex items-center gap-1">
                     <ArrowRightLeft className="h-3 w-3" />
@@ -259,25 +252,28 @@ export function NationsList({
           </div>
 
           {myNation.listedPrice && (
-            <div className="mt-2 text-xs text-emerald-400">
-              Currently listed for <strong>{myNation.listedPrice}</strong> tokens
+            <div className="mt-2 text-xs text-zinc-400">
+              Currently listed for{" "}
+              <span className="font-bold text-white">{myNation.listedPrice}</span>{" "}
+              tokens
             </div>
           )}
 
           {myNation.isTraitor && (
-            <div className="mt-3 rounded-xl border border-red-500/30 bg-red-950/30 px-3 py-2 text-xs text-red-300">
+            <div className="mt-3 rounded-xl border border-zinc-600 bg-zinc-950 px-3 py-2 text-xs text-zinc-300">
               <div className="flex items-start gap-2">
-                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-red-300" />
                 <span>
-                  You are marked as a <strong>Traitor</strong>. Rewards reduced.
-                  Cannot claim empty countries until redeemed.
+                  You are marked as a{" "}
+                  <span className="font-bold text-red-300">Traitor</span>.
+                  Rewards reduced. Cannot claim empty countries until redeemed.
                 </span>
               </div>
               <div className="mt-2 flex gap-2">
                 <button
                   onClick={() => void handleRedeemTraitor(true)}
                   disabled={redeeming}
-                  className="rounded-lg bg-emerald-600/80 px-2.5 py-1 text-[0.65rem] font-bold text-white hover:bg-emerald-500 disabled:opacity-50"
+                  className="rounded-lg bg-white px-2.5 py-1 text-[0.65rem] font-bold text-black hover:bg-zinc-200 disabled:opacity-50"
                 >
                   {redeeming ? "..." : "Pay to Redeem"}
                 </button>
@@ -301,18 +297,16 @@ export function NationsList({
         </div>
       )}
 
-      {/* Search */}
       <div className="relative mt-4">
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search nations..."
-          className="w-full rounded-xl border border-zinc-700 bg-zinc-900 py-2.5 pl-10 pr-4 text-sm text-white placeholder:text-zinc-600 focus:border-amber-500/50 focus:outline-none"
+          className="w-full rounded-xl border border-zinc-700 bg-zinc-900 py-2.5 pl-10 pr-4 text-sm text-white placeholder:text-zinc-600 focus:border-white/40 focus:outline-none"
         />
       </div>
 
-      {/* Nations list */}
       <div className="mt-3 space-y-2">
         {loading ? (
           <div className="py-12 text-center text-sm text-zinc-500">
@@ -338,7 +332,7 @@ export function NationsList({
                 className={cn(
                   "flex w-full items-center gap-3 rounded-xl border p-3 text-left transition-colors hover:bg-zinc-800/80",
                   isMine
-                    ? "border-amber-500/40 bg-amber-950/20"
+                    ? "border-white/30 bg-zinc-900"
                     : "border-zinc-700 bg-zinc-900",
                 )}
               >
@@ -368,24 +362,19 @@ export function NationsList({
                 </div>
                 <div className="shrink-0 text-right">
                   {canClaim ? (
-                    <span className="rounded-lg border border-emerald-500/40 bg-emerald-950/60 px-2 py-1 text-[0.65rem] font-bold uppercase tracking-wider text-emerald-400">
+                    <span className="rounded-lg border border-zinc-600 bg-zinc-950 px-2 py-1 text-[0.65rem] font-bold uppercase tracking-wider text-emerald-400">
                       Claim
                     </span>
                   ) : isMine ? (
-                    <span className="rounded-lg border border-amber-500/40 bg-amber-950/60 px-2 py-1 text-[0.65rem] font-bold uppercase tracking-wider text-amber-400">
+                    <span className="rounded-lg border border-zinc-600 bg-zinc-950 px-2 py-1 text-[0.65rem] font-bold uppercase tracking-wider text-white">
                       Yours
                     </span>
                   ) : n.listedPrice ? (
-                    <span className="rounded-lg border border-blue-500/40 bg-blue-950/60 px-2 py-1 text-[0.65rem] font-bold uppercase tracking-wider text-blue-400">
+                    <span className="rounded-lg border border-zinc-600 bg-zinc-950 px-2 py-1 text-[0.65rem] font-bold uppercase tracking-wider text-white">
                       {n.listedPrice} ◎
                     </span>
                   ) : (
-                    <span
-                      className={cn(
-                        "text-[0.6rem] font-bold uppercase",
-                        nRep.color,
-                      )}
-                    >
+                    <span className="text-[0.6rem] font-bold uppercase text-zinc-400">
                       {nRep.tier}
                     </span>
                   )}

@@ -12,10 +12,10 @@ export function NukeHeader({
   totalLaunched: number;
 }) {
   return (
-    <div className="rounded-2xl border border-red-900/40 bg-gradient-to-br from-red-950/70 via-zinc-950 to-zinc-950 p-4">
+    <div className="rounded-2xl border border-zinc-700 bg-zinc-900 p-4">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <div className="flex items-center gap-2 text-red-400">
+          <div className="flex items-center gap-2 text-white">
             <Bomb className="h-5 w-5" />
             <span className="font-bold tracking-wide">STRATEGIC NUKES</span>
           </div>
@@ -24,7 +24,7 @@ export function NukeHeader({
           </p>
         </div>
         {isTerrorist && (
-          <div className="flex items-center gap-1.5 rounded-full border border-red-500/40 bg-red-600/20 px-3 py-1 text-xs font-bold text-red-400">
+          <div className="flex items-center gap-1.5 rounded-full border border-zinc-600 bg-zinc-950 px-3 py-1 text-xs font-bold text-red-300">
             <Skull className="h-3.5 w-3.5" />
             TERRORIST
           </div>
@@ -32,16 +32,14 @@ export function NukeHeader({
       </div>
 
       <div className="mt-4 grid grid-cols-2 gap-3 text-center">
-        <div className="rounded-xl bg-black/35 py-2.5">
-          <div className="text-2xl font-black text-amber-300">{owned}</div>
+        <div className="rounded-xl bg-zinc-950 py-2.5">
+          <div className="text-2xl font-black text-white">{owned}</div>
           <div className="text-[10px] uppercase tracking-wider text-zinc-500">
             Owned
           </div>
         </div>
-        <div className="rounded-xl bg-black/35 py-2.5">
-          <div className="text-2xl font-black text-red-400">
-            {totalLaunched}
-          </div>
+        <div className="rounded-xl bg-zinc-950 py-2.5">
+          <div className="text-2xl font-black text-white">{totalLaunched}</div>
           <div className="text-[10px] uppercase tracking-wider text-zinc-500">
             Lifetime hits
           </div>

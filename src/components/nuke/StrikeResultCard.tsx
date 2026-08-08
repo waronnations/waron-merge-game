@@ -34,7 +34,7 @@ export function StrikeResultCard({
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0 }}
-          className="relative rounded-2xl border border-red-500/40 bg-gradient-to-b from-red-950/70 to-zinc-950 p-4 text-center"
+          className="relative rounded-2xl border border-zinc-700 bg-zinc-900 p-4 text-center"
         >
           <button
             type="button"
@@ -45,9 +45,7 @@ export function StrikeResultCard({
             <X className="h-4 w-4" />
           </button>
 
-          <div className="text-lg font-black text-red-300">
-            ☢ Strike successful
-          </div>
+          <div className="text-lg font-black text-white">☢ Strike successful</div>
           <div className="mt-1 text-sm text-zinc-300">
             {lastResult.targetName} has been hit
           </div>
@@ -55,7 +53,7 @@ export function StrikeResultCard({
           <div className="mt-4 grid grid-cols-3 gap-2 text-sm">
             {lastResult.glory != null && (
               <div>
-                <div className="font-bold text-amber-300">
+                <div className="font-bold text-white">
                   +{lastResult.glory.toLocaleString()}
                 </div>
                 <div className="text-[10px] text-zinc-500">Glory</div>
@@ -63,15 +61,13 @@ export function StrikeResultCard({
             )}
             {lastResult.energy != null && (
               <div>
-                <div className="font-bold text-sky-300">
-                  +{lastResult.energy}
-                </div>
+                <div className="font-bold text-white">+{lastResult.energy}</div>
                 <div className="text-[10px] text-zinc-500">Energy</div>
               </div>
             )}
             {lastResult.tokens != null && (
               <div>
-                <div className="font-bold text-emerald-300">
+                <div className="font-bold text-white">
                   +{lastResult.tokens.toFixed(2)}
                 </div>
                 <div className="text-[10px] text-zinc-500">Tokens</div>
@@ -80,20 +76,20 @@ export function StrikeResultCard({
           </div>
 
           {lastResult.transferred != null && (
-            <p className="mt-3 text-xs text-amber-200/80">
+            <p className="mt-3 text-xs text-zinc-400">
               {lastResult.transferred} tokens sent to their vault
             </p>
           )}
 
           {lastResult.wasPeaceful && (
-            <div className="mt-3 flex items-center justify-center gap-1.5 text-xs text-orange-300">
+            <div className="mt-3 flex items-center justify-center gap-1.5 text-xs text-zinc-400">
               <ShieldAlert className="h-3.5 w-3.5" />
               Peaceful nation — reduced rewards
             </div>
           )}
 
           {lastResult.becameTerrorist && (
-            <div className="mt-3 flex items-center justify-center gap-1.5 text-xs font-bold text-red-400">
+            <div className="mt-3 flex items-center justify-center gap-1.5 text-xs font-bold text-red-300">
               <Skull className="h-3.5 w-3.5" />
               You are now marked as a TERRORIST
             </div>
@@ -103,14 +99,14 @@ export function StrikeResultCard({
             <button
               type="button"
               onClick={shareStrikeTelegram}
-              className="min-h-[2.5rem] rounded-xl bg-sky-600 py-2.5 text-xs font-black uppercase tracking-widest text-white hover:bg-sky-500"
+              className="min-h-[2.5rem] rounded-xl bg-white py-2.5 text-xs font-black uppercase tracking-widest text-black hover:bg-zinc-200"
             >
               Share Telegram
             </button>
             <button
               type="button"
               onClick={shareStrikeX}
-              className="min-h-[2.5rem] rounded-xl bg-zinc-100 py-2.5 text-xs font-black uppercase tracking-widest text-black hover:bg-white"
+              className="min-h-[2.5rem] rounded-xl border border-zinc-600 bg-zinc-950 py-2.5 text-xs font-black uppercase tracking-widest text-white hover:border-zinc-400"
             >
               Share on X
             </button>
