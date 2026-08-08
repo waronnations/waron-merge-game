@@ -5,28 +5,30 @@
 :root {
   --radius: 0.75rem;
   --background: #000000;
-  --foreground: #ffffff;
+  --foreground: #fafafa;
   --panel: #0a0a0a;
   --card: #0a0a0a;
-  --card-foreground: #ffffff;
+  --card-foreground: #fafafa;
   --popover: #0a0a0a;
-  --popover-foreground: #ffffff;
-  --primary: #ffffff;
+  --popover-foreground: #fafafa;
+  --primary: #f59e0b;              /* amber — rewards / primary CTA */
   --primary-foreground: #000000;
   --secondary: #111111;
-  --secondary-foreground: #ffffff;
+  --secondary-foreground: #fafafa;
   --muted: #1a1a1a;
   --muted-foreground: #a1a1aa;
-  --accent: #ffffff;
+  --accent: #f59e0b;
   --accent-foreground: #000000;
-  --destructive: #ffffff;
-  --destructive-foreground: #000000;
-  --border: #222222;
+  --destructive: #ef4444;          /* red — strike / danger */
+  --destructive-foreground: #ffffff;
+  --border: #27272a;
   --input: #111111;
-  --ring: #ffffff;
-  --wardog: #e5e5e5;          /* near-white */
-  --warcat: #a1a1aa;          /* light gray */
-  --gold: #ffffff;            /* no more gold */
+  --ring: #f59e0b;
+  --wardog: #f87171;               /* soft red */
+  --warcat: #a78bfa;               /* soft violet */
+  --gold: #f59e0b;                 /* amber gold for glory */
+  --success: #34d399;              /* emerald */
+  --info: #38bdf8;                 /* sky */
   --nav-h: 5rem;
   --safe-b: env(safe-area-inset-bottom, 0px);
 }
@@ -57,7 +59,6 @@
 body {
   background: #000000;
   color: var(--foreground);
-  /* removed all colored radial gradients */
   overscroll-behavior: none;
 }
 
@@ -72,9 +73,9 @@ body {
 }
 
 .hit-cta-primary {
-  background: #ffffff;
+  background: #f59e0b;
   color: #000000;
-  box-shadow: 0 8px 24px rgba(255, 255, 255, 0.12);
+  box-shadow: 0 8px 24px rgba(245, 158, 11, 0.25);
 }
 
 .hit-cta-primary:active:not(:disabled) {
@@ -82,10 +83,10 @@ body {
 }
 
 .hit-cta-danger {
-  background: #ffffff;
-  color: #000000;
-  border: 1px solid #ffffff;
-  box-shadow: 0 8px 24px rgba(255, 255, 255, 0.12);
+  background: #ef4444;
+  color: #ffffff;
+  border: 1px solid #f87171;
+  box-shadow: 0 8px 24px rgba(239, 68, 68, 0.25);
 }
 
 .section-label {
@@ -96,15 +97,15 @@ body {
   font-weight: 900;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: #a1a1aa;
+  color: #fbbf24; /* amber-400 */
 }
 
 .tab-hero {
   border-radius: 1rem;
-  border: 1px solid #333333;
+  border: 1px solid #3f3f46;
   background: linear-gradient(
     135deg,
-    rgba(255, 255, 255, 0.06),
+    rgba(245, 158, 11, 0.08),
     rgba(10, 10, 10, 0.95)
   );
   padding: 0.85rem 1rem;
@@ -115,7 +116,7 @@ body {
   font-weight: 900;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: #ffffff;
+  color: #fbbf24;
 }
 
 .tab-hero-desc {
@@ -156,9 +157,9 @@ body {
 }
 
 .subtab-btn-active {
-  background: #ffffff;
+  background: #f59e0b;
   color: #000000;
-  box-shadow: 0 4px 16px rgba(255, 255, 255, 0.18);
+  box-shadow: 0 4px 16px rgba(245, 158, 11, 0.3);
 }
 
 .nav-item {
@@ -166,12 +167,12 @@ body {
 }
 
 .nav-item-active {
-  color: #ffffff;
+  color: #fbbf24;
 }
 
 .nav-item-active .nav-icon-wrap {
-  background: rgba(255, 255, 255, 0.12);
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.35);
+  background: rgba(245, 158, 11, 0.15);
+  box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.45);
 }
 
 .nav-icon-wrap {

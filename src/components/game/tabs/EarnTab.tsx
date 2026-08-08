@@ -62,12 +62,8 @@ export function EarnTab({
         getClaims(),
       ]);
 
-      const spendableWardog = Number(
-        topup?.spendable?.spendableWardog ?? 0,
-      );
-      const spendableWarcat = Number(
-        topup?.spendable?.spendableWarcat ?? 0,
-      );
+      const spendableWardog = Number(topup?.spendable?.spendableWardog ?? 0);
+      const spendableWarcat = Number(topup?.spendable?.spendableWarcat ?? 0);
 
       let claimedWardog = 0;
       let claimedWarcat = 0;
@@ -83,7 +79,7 @@ export function EarnTab({
         claimedWarcat,
       });
     } catch {
-      /* offline / unauth — keep last or zeros */
+      /* offline */
     }
   }, [authenticated]);
 
@@ -91,10 +87,6 @@ export function EarnTab({
     void refreshPools();
   }, [refreshPools, earnSub]);
 
-  /**
-   * After a claim, ClaimPanel reports claimable + claimed.
-   * Patch local game state and local pool legend.
-   */
   const handleClaimBalanceSync = (payload: ClaimBalanceSyncPayload) => {
     game.applyServerEconomy({
       wardogTokens: payload.wardogTokens,
@@ -113,7 +105,6 @@ export function EarnTab({
     payWith: PayToken,
   ) => {
     await onShopBuy(itemId, payWith);
-    // Refresh spendable / claimed after any shop debit
     void refreshPools();
   };
 

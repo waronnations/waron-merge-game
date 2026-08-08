@@ -16,7 +16,7 @@ export const TAB_HERO: Record<PrimaryTab, { title: string; desc: string }> = {
   },
   earn: {
     title: "Economy",
-    desc: "Spend in Shop · queue token Claims · recruit allies for milestone rewards.",
+    desc: "Shop uses topped-up tokens · Claim unclaimed merge earnings · Recruit allies.",
   },
   base: {
     title: "Your command",

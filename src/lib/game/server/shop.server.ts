@@ -2,16 +2,14 @@
  * Server-only shop purchases + energy recovery.
  *
  * HARD RULES:
- *   - Merge board play is free (energy only). No token spend on merge/spawn/swap.
- *   - Energy recover + energyPack: pay from UNCLAIMED playable jettons only
- *     (earned on board). Never top-up / spendable.
- *   - Other shop items (glory, nukes, …): topped-up spendable only.
- *   - All paid costs still use applyDynamicTax + recordTreasuryDeposit.
- *   - Never spends claimed_* reserve (claimable vault stays intact).
+ *   - Merge board play is free (energy only).
+ *   - energyPack + recoverEnergy: topped-up (spendable) only.
+ *   - All other shop items: topped-up spendable only.
+ *   - Unclaimed playable tokens are claim-only — never shop-spent.
  */
 
 import { sql } from "@/lib/db.server";
-import { normalizeToken, subTokens } from "@/lib/tokens";
+import { normalizeToken } from "@/lib/tokens";
 import {
   MAX_ENERGY,
   RECOVER_ENERGY_AMOUNT,
@@ -39,13 +37,6 @@ import {
 
 type PayToken = "wardog" | "warcat";
 
-/** Shop items that power the merge board → playable (unclaimed) only. */
-const PLAYABLE_ENERGY_ITEMS = new Set<string>(["energyPack"]);
-
-/**
- * Spend ONLY from topped-up (spendable) balances.
- * Used for non-energy shop items (glory, nukes, etc.).
- */
 async function spendSpendableOnly(
   userId: number,
   cost: number,
@@ -60,65 +51,12 @@ async function spendSpendableOnly(
       ? balances.spendableWardog
       : balances.spendableWarcat;
 
-  if (available < need - 1e-6) {
-    return { ok: false };
-  }
+  if (available < need - 1e-6) return { ok: false };
 
-  const debited = await debitSpendable(
-    userId,
-    payWith as TopupToken,
-    need,
-  );
-
+  const debited = await debitSpendable(userId, payWith as TopupToken, need);
   if (!debited.ok) return { ok: false };
 
   return { ok: true, spent: need };
-}
-
-/**
- * Spend ONLY from unclaimed playable balances (merge earnings).
- * playable = progress tokens − claimed_* reserve.
- * Never touches top-up / spendable.
- */
-function spendPlayableOnly(
-  state: ServerGameState,
-  reserve: { wardog: number; warcat: number },
-  cost: number,
-  payWith: PayToken,
-):
-  | { ok: true; state: ServerGameState; spent: number }
-  | { ok: false } {
-  const need = normalizeToken(cost);
-  if (need <= 0) return { ok: true, state, spent: 0 };
-
-  const totalW = Number(state.wardogTokens ?? 0);
-  const totalC = Number(state.warcatTokens ?? 0);
-  const playableW = Math.max(0, totalW - reserve.wardog);
-  const playableC = Math.max(0, totalC - reserve.warcat);
-
-  if (payWith === "wardog") {
-    if (playableW < need - 1e-6) return { ok: false };
-    return {
-      ok: true,
-      state: {
-        ...state,
-        wardogTokens: normalizeToken(subTokens(totalW, need)),
-        warcatTokens: normalizeToken(totalC),
-      },
-      spent: need,
-    };
-  }
-
-  if (playableC < need - 1e-6) return { ok: false };
-  return {
-    ok: true,
-    state: {
-      ...state,
-      wardogTokens: normalizeToken(totalW),
-      warcatTokens: normalizeToken(subTokens(totalC, need)),
-    },
-    spent: need,
-  };
 }
 
 export async function serverPurchaseShopItem(
@@ -131,14 +69,10 @@ export async function serverPurchaseShopItem(
   }
 
   const item = SHOP_ITEMS_SERVER[itemId];
-  if (!item) {
-    return { ok: false, reason: "unknown_item" };
-  }
+  if (!item) return { ok: false, reason: "unknown_item" };
 
   const loaded = await loadProgress(userId);
-  if (!loaded) {
-    return { ok: false, reason: "no_progress" };
-  }
+  if (!loaded) return { ok: false, reason: "no_progress" };
 
   let state = alignStateWithColumns(
     { ...(loaded.state as ServerGameState) } as ServerGameState,
@@ -147,30 +81,12 @@ export async function serverPurchaseShopItem(
 
   const baseCost = Number(item.cost);
   const cost = await applyDynamicTax(baseCost, payWith);
-  const reserve = await getClaimedReserve(userId);
 
-  const isBoardEnergy = PLAYABLE_ENERGY_ITEMS.has(itemId);
-  let spentSpendable = 0;
-  let spentPlayable = 0;
-
-  if (isBoardEnergy) {
-    // Merge-board energy pack → unclaimed playable only
-    const paid = spendPlayableOnly(state, reserve, cost, payWith);
-    if (!paid.ok) {
-      return { ok: false, reason: "insufficient_playable" };
-    }
-    state = paid.state;
-    spentPlayable = paid.spent;
-  } else {
-    // Other shop items → topped-up spendable only
-    const payment = await spendSpendableOnly(userId, cost, payWith);
-    if (!payment.ok) {
-      return { ok: false, reason: "insufficient_spendable" };
-    }
-    spentSpendable = payment.spent;
+  const payment = await spendSpendableOnly(userId, cost, payWith);
+  if (!payment.ok) {
+    return { ok: false, reason: "insufficient_spendable" };
   }
 
-  // Apply item effect
   if (itemId === "energyPack") {
     state.energy = clampServerEnergy(Number(state.energy ?? 0) + 30);
   } else if (itemId === "gloryBoost") {
@@ -196,28 +112,21 @@ export async function serverPurchaseShopItem(
     multiplier,
     details: {
       payWith,
-      spentSpendable,
-      spentPlayable,
+      spentSpendable: payment.spent,
+      spentPlayable: 0,
       itemId,
-      paymentSource: isBoardEnergy ? "playable" : "spendable",
+      paymentSource: "spendable",
     },
   });
 
-  state.wardogTokens = normalizeToken(
-    Math.max(0, Number(state.wardogTokens ?? 0)),
-  );
-  state.warcatTokens = normalizeToken(
-    Math.max(0, Number(state.warcatTokens ?? 0)),
-  );
+  state.wardogTokens = normalizeToken(Math.max(0, Number(state.wardogTokens ?? 0)));
+  state.warcatTokens = normalizeToken(Math.max(0, Number(state.warcatTokens ?? 0)));
 
+  await getClaimedReserve(userId);
   await writeProgress(userId, state, { touchSyncClock: false });
   return { ok: true, state };
 }
 
-/**
- * Board energy recover — UNCLAIMED playable jettons only.
- * Does not touch top-up balances.
- */
 export async function serverRecoverEnergy(
   userId: number,
   payWith: PayToken = "wardog",
@@ -235,9 +144,7 @@ export async function serverRecoverEnergy(
   }
 
   const loaded = await loadProgress(userId);
-  if (!loaded) {
-    return { ok: false, reason: "no_progress" };
-  }
+  if (!loaded) return { ok: false, reason: "no_progress" };
 
   let state = alignStateWithColumns(
     { ...(loaded.state as ServerGameState) } as ServerGameState,
@@ -250,13 +157,10 @@ export async function serverRecoverEnergy(
   }
 
   const cost = await applyDynamicTax(RECOVER_ENERGY_TOKEN_COST, payWith);
-  const reserve = await getClaimedReserve(userId);
-
-  const paid = spendPlayableOnly(state, reserve, cost, payWith);
-  if (!paid.ok) {
-    return { ok: false, reason: "insufficient_playable" };
+  const payment = await spendSpendableOnly(userId, cost, payWith);
+  if (!payment.ok) {
+    return { ok: false, reason: "insufficient_spendable" };
   }
-  state = paid.state;
 
   state.energy = clampServerEnergy(currentEnergy + RECOVER_ENERGY_AMOUNT);
 
@@ -266,9 +170,7 @@ export async function serverRecoverEnergy(
   `;
 
   const taxMultiplier =
-    RECOVER_ENERGY_TOKEN_COST > 0
-      ? cost / RECOVER_ENERGY_TOKEN_COST
-      : 1;
+    RECOVER_ENERGY_TOKEN_COST > 0 ? cost / RECOVER_ENERGY_TOKEN_COST : 1;
   const tax = normalizeToken(Math.max(0, cost - RECOVER_ENERGY_TOKEN_COST));
 
   await recordTreasuryDeposit({
@@ -280,8 +182,9 @@ export async function serverRecoverEnergy(
     multiplier: taxMultiplier,
     details: {
       payWith,
-      spentPlayable: paid.spent,
-      paymentSource: "playable",
+      spentSpendable: payment.spent,
+      spentPlayable: 0,
+      paymentSource: "spendable",
     },
   });
 
