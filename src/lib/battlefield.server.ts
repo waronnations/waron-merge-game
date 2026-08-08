@@ -1,13 +1,7 @@
 // src/lib/battlefield.server.ts
 /**
- * OPS Battlefield — server authoritative (next-level polish).
- *
- * HARD RULES
- * - Weapon buys: topped-up (spendable) only + dynamic tax → ClaimTreasury
- * - Strikes: consume owned weapon; rewards are claimable playable tokens
- * - Protected nations block incoming PvP
- * - Targets resolvable by Telegram ID or @username
- * - Victims get an in-app notification row
+ * OPS Battlefield — inventory in ops_inventory (NOT progress.state).
+ * progress sync must never wipe weapons.
  */
 
 import { sql } from "@/lib/db.server";
@@ -33,17 +27,6 @@ import {
 export type PayToken = "wardog" | "warcat";
 
 type WeaponInv = Record<string, number>;
-
-function readInv(state: Record<string, unknown>): WeaponInv {
-  const raw = state.battlefieldWeapons;
-  if (!raw || typeof raw !== "object") return {};
-  const out: WeaponInv = {};
-  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
-    const n = Number(v);
-    if (Number.isFinite(n) && n > 0) out[k] = Math.floor(n);
-  }
-  return out;
-}
 
 function utcDayKey(d = new Date()): string {
   return d.toISOString().slice(0, 10);
@@ -79,9 +62,74 @@ export async function ensureBattlefieldSchema(): Promise<void> {
       PRIMARY KEY (user_id, weapon_id)
     )
   `;
+
+  /** Durable ammo — never stored in progress.state (client sync would wipe it). */
+  await sql`
+    CREATE TABLE IF NOT EXISTS ops_inventory (
+      user_id     BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      weapon_id   TEXT NOT NULL,
+      qty         INT NOT NULL DEFAULT 0 CHECK (qty >= 0),
+      PRIMARY KEY (user_id, weapon_id)
+    )
+  `;
+  await sql`CREATE INDEX IF NOT EXISTS ops_inventory_user_idx ON ops_inventory (user_id)`;
 }
 
-/** Resolve target by numeric Telegram ID or username (with/without @). */
+async function readInventory(userId: number): Promise<WeaponInv> {
+  const res = await sql`
+    SELECT weapon_id, qty FROM ops_inventory
+    WHERE user_id = ${userId} AND qty > 0
+  `;
+  const out: WeaponInv = {};
+  for (const r of res.rows) {
+    out[String(r.weapon_id)] = Math.floor(Number(r.qty));
+  }
+  return out;
+}
+
+async function addInventory(
+  userId: number,
+  weaponId: string,
+  delta: number,
+): Promise<number> {
+  if (delta === 0) {
+    const cur = await readInventory(userId);
+    return cur[weaponId] ?? 0;
+  }
+  if (delta > 0) {
+    await sql`
+      INSERT INTO ops_inventory (user_id, weapon_id, qty)
+      VALUES (${userId}, ${weaponId}, ${delta})
+      ON CONFLICT (user_id, weapon_id)
+      DO UPDATE SET qty = ops_inventory.qty + EXCLUDED.qty
+    `;
+  } else {
+    await sql`
+      UPDATE ops_inventory
+      SET qty = GREATEST(0, qty + ${delta})
+      WHERE user_id = ${userId} AND weapon_id = ${weaponId}
+    `;
+  }
+  const inv = await readInventory(userId);
+  return inv[weaponId] ?? 0;
+}
+
+/** Consume 1 unit; returns false if none left. */
+async function consumeWeapon(
+  userId: number,
+  weaponId: string,
+): Promise<boolean> {
+  const res = await sql`
+    UPDATE ops_inventory
+    SET qty = qty - 1
+    WHERE user_id = ${userId}
+      AND weapon_id = ${weaponId}
+      AND qty >= 1
+    RETURNING qty
+  `;
+  return res.rowCount > 0;
+}
+
 export async function resolveBattlefieldTarget(
   query: string,
 ): Promise<
@@ -179,8 +227,7 @@ export async function getBattlefieldInventory(userId: number): Promise<{
   attacksToday: number;
 }> {
   await ensureBattlefieldSchema();
-  const prog = await loadProgress(userId);
-  const inv = prog ? readInv((prog.state as any) ?? {}) : {};
+  const inv = await readInventory(userId);
 
   const cds = await sql`
     SELECT weapon_id, EXTRACT(EPOCH FROM ready_at) * 1000 AS ready_ms
@@ -206,7 +253,6 @@ export async function getBattlefieldInventory(userId: number): Promise<{
   };
 }
 
-/** Live tax quotes for every weapon (armory UI). */
 export async function getBattlefieldArmoryQuotes(): Promise<
   Array<{
     weaponId: BattlefieldWeaponId;
@@ -232,10 +278,6 @@ export async function getBattlefieldArmoryQuotes(): Promise<
   return out;
 }
 
-/**
- * Buy one weapon unit.
- * applyDynamicTax returns FINAL price (base × multiplier).
- */
 export async function buyBattlefieldWeapon(
   userId: number,
   weaponId: BattlefieldWeaponId,
@@ -261,6 +303,7 @@ export async function buyBattlefieldWeapon(
 
   const base = weapon.cost;
   const health = await getTreasuryHealth();
+  // applyDynamicTax returns FINAL price (base × multiplier)
   const total = normalizeToken(await applyDynamicTax(base, payWith));
   const tax = normalizeToken(Math.max(0, total - base));
 
@@ -276,15 +319,8 @@ export async function buyBattlefieldWeapon(
   const deb = await debitSpendable(userId, payWith as TopupToken, total);
   if (!deb.ok) return { ok: false, error: "insufficient_spendable" };
 
-  const prog = await loadProgress(userId);
-  if (!prog) return { ok: false, error: "no_progress" };
-
-  const state = { ...(prog.state as any) };
-  const inv = readInv(state);
-  inv[weaponId] = (inv[weaponId] ?? 0) + 1;
-  state.battlefieldWeapons = inv;
-
-  await writeProgress(userId, state, { touchSyncClock: false });
+  await addInventory(userId, weaponId, 1);
+  const inv = await readInventory(userId);
 
   await recordTreasuryDeposit({
     userId,
@@ -318,9 +354,6 @@ export async function buyBattlefieldWeapon(
   };
 }
 
-/**
- * Strike by Telegram ID **or** @username string.
- */
 export async function battlefieldStrike(
   attackerId: number,
   targetQuery: string | number,
@@ -372,14 +405,8 @@ export async function battlefieldStrike(
     return { ok: false, error: "cooldown" };
   }
 
-  const prog = await loadProgress(attackerId);
-  if (!prog) return { ok: false, error: "no_progress" };
-  const state = { ...(prog.state as any) };
-  const inv = readInv(state);
-  if ((inv[weaponId] ?? 0) < 1) return { ok: false, error: "no_weapon" };
-  inv[weaponId] = inv[weaponId] - 1;
-  if (inv[weaponId] <= 0) delete inv[weaponId];
-  state.battlefieldWeapons = inv;
+  const consumed = await consumeWeapon(attackerId, weaponId);
+  if (!consumed) return { ok: false, error: "no_weapon" };
 
   const hit = Math.random() < weapon.hitChance;
   let gloryGained = 0;
@@ -393,24 +420,28 @@ export async function battlefieldStrike(
   if (hit) {
     gloryGained = weapon.gloryOnHit;
     tokenReward = weapon.tokenRewardOnHit;
-    state.glory = Number(state.glory ?? prog.glory ?? 0) + gloryGained;
-    const half = normalizeToken(tokenReward / 2);
-    state.wardogTokens = addTokens(Number(prog.wardog_tokens ?? 0), half);
-    state.warcatTokens = addTokens(Number(prog.warcat_tokens ?? 0), half);
+
+    const prog = await loadProgress(attackerId);
+    if (prog) {
+      const state = { ...(prog.state as any) };
+      state.glory = Number(state.glory ?? prog.glory ?? 0) + gloryGained;
+      const half = normalizeToken(tokenReward / 2);
+      state.wardogTokens = addTokens(Number(prog.wardog_tokens ?? 0), half);
+      state.warcatTokens = addTokens(Number(prog.warcat_tokens ?? 0), half);
+      await writeProgress(attackerId, state, { touchSyncClock: false });
+    }
 
     const vProg = await loadProgress(target.userId);
     if (vProg) {
       const vs = { ...(vProg.state as any) };
-      const vGlory = Math.max(
+      vs.glory = Math.max(
         0,
         Number(vs.glory ?? vProg.glory ?? 0) - weapon.gloryDrainOnHit,
       );
-      const vEnergy = Math.max(
+      vs.energy = Math.max(
         0,
         Number(vs.energy ?? 0) - weapon.energyDrainOnHit,
       );
-      vs.glory = vGlory;
-      vs.energy = vEnergy;
       await writeProgress(target.userId, vs, { touchSyncClock: false });
     }
 
@@ -428,8 +459,6 @@ export async function battlefieldStrike(
       `${attackerLabel} missed you with ${weapon.name}`,
     );
   }
-
-  await writeProgress(attackerId, state, { touchSyncClock: false });
 
   const ready = new Date(Date.now() + weapon.cooldownSec * 1000);
   await sql`
@@ -503,7 +532,6 @@ export async function listOpsHistory(
   }));
 }
 
-/** Global recent hits (kill feed). */
 export async function listOpsKillFeed(limit = 15): Promise<
   Array<{
     id: number;
