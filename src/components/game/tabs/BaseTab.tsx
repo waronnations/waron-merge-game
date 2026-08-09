@@ -4,6 +4,7 @@ import { TabHero } from "@/components/game/TabHero";
 import { SubTabBar } from "@/components/game/SubTabBar";
 import { ProfilePanel, LeaderboardPanel } from "@/components/Panels";
 import type { GameState } from "@/lib/game-state";
+import type { SessionUser } from "@/hooks/use-telegram-session";
 import type { useLeaderboard } from "@/hooks/use-server-progress";
 
 export type BaseSub = "profile" | "ranks";
@@ -15,6 +16,7 @@ export function BaseTab({
   leaderboard,
   myUserId,
   authenticated,
+  user,
 }: {
   baseSub: BaseSub;
   setBaseSub: (v: BaseSub) => void;
@@ -22,6 +24,7 @@ export function BaseTab({
   leaderboard: ReturnType<typeof useLeaderboard>["entries"];
   myUserId: number | null;
   authenticated: boolean;
+  user?: SessionUser | null;
 }) {
   return (
     <>
@@ -35,7 +38,11 @@ export function BaseTab({
         onChange={setBaseSub}
       />
       {baseSub === "profile" ? (
-        <ProfilePanel state={state} />
+        <ProfilePanel
+          state={state}
+          user={user}
+          authenticated={authenticated}
+        />
       ) : (
         <LeaderboardPanel
           state={state}

@@ -318,6 +318,7 @@ function WaronMergePage() {
                 leaderboard={leaderboard}
                 myUserId={session.user?.id ?? null}
                 authenticated={authenticated}
+                user={session.user}
               />
             </motion.div>
           )}

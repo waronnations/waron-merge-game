@@ -27,7 +27,7 @@ export type PayToken = "wardog" | "warcat";
 export function ProfilePanel({
   state,
   user,
-  authenticated,
+  authenticated = false,
 }: {
   state: GameState;
   user?: SessionUser | null;
@@ -52,22 +52,25 @@ export function ProfilePanel({
   const warcat = claimable.warcat;
 
   const refreshClaimable = useCallback(async () => {
-    if (!authenticated) return;
     setLoadingBalances(true);
     try {
       const snap = await getClaims();
-      if (snap && "balances" in snap) {
+      // Match ClaimPanel: accept full snapshot (has claims + balances)
+      if (snap && typeof snap === "object" && "balances" in snap) {
+        const bal = (snap as any).balances ?? {};
+        const cl = (snap as any).claimed ?? {};
+        const tot = (snap as any).total ?? {};
         setClaimable({
-          wardog: Number(snap.balances.wardog ?? 0),
-          warcat: Number(snap.balances.warcat ?? 0),
+          wardog: Number(bal.wardog ?? 0),
+          warcat: Number(bal.warcat ?? 0),
         });
         setClaimed({
-          wardog: Number(snap.claimed?.wardog ?? 0),
-          warcat: Number(snap.claimed?.warcat ?? 0),
+          wardog: Number(cl.wardog ?? 0),
+          warcat: Number(cl.warcat ?? 0),
         });
         setTotalEarned({
-          wardog: Number(snap.total?.wardog ?? 0),
-          warcat: Number(snap.total?.warcat ?? 0),
+          wardog: Number(tot.wardog ?? 0),
+          warcat: Number(tot.warcat ?? 0),
         });
         setHasLoadedOnce(true);
       }
@@ -76,12 +79,12 @@ export function ProfilePanel({
     } finally {
       setLoadingBalances(false);
     }
-  }, [authenticated]);
+  }, []);
 
-  // Initial + whenever auth or ledger totals change (after merges / spends)
+  // Load on mount + whenever auth flips true + when local ledger tokens change
   useEffect(() => {
     void refreshClaimable();
-  }, [refreshClaimable, state.wardogTokens, state.warcatTokens]);
+  }, [refreshClaimable, authenticated, state.wardogTokens, state.warcatTokens]);
 
   const copy = async (text: string, label: string) => {
     try {
@@ -187,9 +190,8 @@ export function ProfilePanel({
         </div>
       </div>
 
-      {/* Wallet status */}
       <div className="flex items-center justify-between rounded-xl border border-zinc-700 bg-zinc-900/80 px-3 py-2.5">
-        <div className="flex items-center gap-2 min-w-0">
+        <div className="flex min-w-0 items-center gap-2">
           <Wallet
             className={`h-4 w-4 shrink-0 ${connected ? "text-emerald-400" : "text-zinc-500"}`}
           />
@@ -215,7 +217,6 @@ export function ProfilePanel({
         )}
       </div>
 
-      {/* Traitor redemption */}
       {isTraitor && (
         <div className="rounded-2xl border border-red-500/40 bg-red-950/30 p-4">
           <div className="flex items-center gap-2 text-sm font-black uppercase tracking-wider text-red-400">
@@ -223,9 +224,8 @@ export function ProfilePanel({
             Traitor Status
           </div>
           <p className="mt-2 text-xs leading-relaxed text-zinc-400">
-            Paid redemption needs a connected wallet (once), then spends
-            $WARDOG or $WARCAT — never native TON. Or wait the 7-day cooldown
-            for free.
+            Paid redemption needs a connected wallet (once), then spends $WARDOG
+            or $WARCAT — never native TON. Or wait the 7-day cooldown for free.
           </p>
           <div className="mt-3 grid grid-cols-2 gap-2">
             <button
@@ -279,7 +279,7 @@ export function ProfilePanel({
         </div>
       </div>
 
-      {/* Token Vault – live claimable (matches Earn / Claim) */}
+      {/* Token Vault – same server source as Earn → Claim */}
       <div className="rounded-2xl border border-zinc-700 bg-zinc-900 p-4">
         <div className="mb-3 flex items-center justify-between">
           <h3 className="text-xs font-black uppercase tracking-widest text-zinc-500">
@@ -304,7 +304,7 @@ export function ProfilePanel({
             claimable={wardog}
             claimed={claimed.wardog}
             total={totalEarned.wardog}
-            loading={!hasLoadedOnce && loadingBalances}
+            loading={loadingBalances && !hasLoadedOnce}
             onCopy={(t) => copy(t, "Address")}
           />
           <TokenCard
@@ -312,18 +312,17 @@ export function ProfilePanel({
             claimable={warcat}
             claimed={claimed.warcat}
             total={totalEarned.warcat}
-            loading={!hasLoadedOnce && loadingBalances}
+            loading={loadingBalances && !hasLoadedOnce}
             onCopy={(t) => copy(t, "Address")}
           />
         </div>
 
         <div className="mt-3 rounded-lg border border-emerald-500/20 bg-emerald-950/20 px-3 py-2 text-[0.6rem] leading-relaxed text-emerald-100/80">
           <strong className="text-emerald-300">Claimable</strong> = merge
-          rewards still available to claim in Earn → Claim (net of all protocol
+          rewards still available to claim in Earn → Claim (net of protocol
           taxes).
           <br />
-          Same server source as the Claim Center. Taxes on shop / energy /
-          nations already reduced the ledger before these numbers appear.
+          Same server source as the Claim Center.
         </div>
       </div>
 
@@ -453,7 +452,7 @@ function TokenCard({
       <button
         type="button"
         onClick={() => onCopy(token.contractAddress)}
-        className="mt-2 flex w-full items-center justify-between rounded-lg bg-black/40 px-2 py-1.5 text-[0.6rem] font-mono text-zinc-300 hover:bg-black/60"
+        className="mt-2 flex w-full items-center justify-between rounded-lg bg-black/40 px-2 py-1.5 font-mono text-[0.6rem] text-zinc-300 hover:bg-black/60"
         title={token.contractAddress}
       >
         <span className="truncate">
