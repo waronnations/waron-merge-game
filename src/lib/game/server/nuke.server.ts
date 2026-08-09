@@ -18,6 +18,7 @@ import {
   truncateToDay,
 } from "./state.server";
 import { isNationProtected } from "@/lib/nations/vault.server";
+import { announceToGroup } from "@/lib/notify.server";
 
 /**
  * Launch a Strategic Nuke against a nation.
@@ -178,6 +179,33 @@ export async function serverLaunchNuke(
     `;
   } catch {
     // table/column variance — non-fatal
+  }
+
+  // ── Public group announcement ─────────────────────────────────────
+  try {
+    const attackerRes = await sql`
+      SELECT username, first_name FROM users WHERE id = ${userId} LIMIT 1
+    `;
+    const a = attackerRes.rows[0];
+    const attackerLabel = a?.username
+      ? `@${a.username}`
+      : (a?.first_name as string) || `Commander #${userId}`;
+
+    const targetLabel = String(nation.name);
+    const tag = nation.tag ? ` [${nation.tag}]` : "";
+
+    const msg =
+      `☢️ <b>STRATEGIC NUKE LAUNCHED</b> ☢️\n\n` +
+      `${attackerLabel} just glassed <b>${targetLabel}${tag}</b>\n` +
+      `⭐ +${glory.toLocaleString()} Glory · ⚡ +${energy} Energy\n` +
+      (wasPeaceful ? `🕊️ Target was peaceful\n` : "") +
+      (becameTerrorist ? `☠️ Attacker is now a TERRORIST\n` : "") +
+      `\nThe pack is hungry. Your country could be next.\n` +
+      `Merge. Build. Conquer. Feed the Pack 🔥`;
+
+    announceToGroup(msg);
+  } catch {
+    /* non-fatal */
   }
 
   return {

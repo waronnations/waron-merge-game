@@ -1,6 +1,9 @@
 /**
  * Server-only Telegram bot messaging helper.
  * Uses TELEGRAM_BOT_TOKEN.
+ *
+ * Supports both private user IDs (number) and public groups/channels
+ * (string username like "@waronnations").
  */
 
 export interface SendResult {
@@ -9,12 +12,16 @@ export interface SendResult {
   error?: string;
 }
 
+/** Official community group / channel */
+export const WARON_GROUP = "@waronnations";
+
 /**
  * Send a message via the Telegram bot HTTP API.
+ * chatId can be a user telegram_id (number) or a public @username / group id (string).
  * Returns { ok, status, error? } — never throws.
  */
 export async function sendBotMessage(
-  chatId: number,
+  chatId: number | string,
   text: string,
 ): Promise<SendResult> {
   const token = process.env.TELEGRAM_BOT_TOKEN;
@@ -42,4 +49,14 @@ export async function sendBotMessage(
       error: e instanceof Error ? e.message : "network_error",
     };
   }
+}
+
+/**
+ * Fire-and-forget announcement into the public @waronnations group.
+ * Never throws / never blocks the main game flow.
+ */
+export function announceToGroup(text: string): void {
+  void sendBotMessage(WARON_GROUP, text).catch(() => {
+    /* non-fatal */
+  });
 }
