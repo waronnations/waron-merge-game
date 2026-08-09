@@ -50,11 +50,14 @@ export function ClaimPanel({
   const [amountWardog, setAmountWardog] = useState("");
   const [amountWarcat, setAmountWarcat] = useState("");
 
+  // CRITICAL FIX: never overwrite ledger totals (state.wardogTokens / warcatTokens)
+  // with claimable amounts. Only sync the claimed counters so Shop can compute
+  // playable = total - claimed correctly.
   const pushBalanceSync = (snap: ClaimsSnapshot) => {
     if (!onBalanceSync) return;
     onBalanceSync({
-      wardogTokens: snap.balances.wardog,
-      warcatTokens: snap.balances.warcat,
+      wardogTokens: Number(state.wardogTokens ?? 0),
+      warcatTokens: Number(state.warcatTokens ?? 0),
       claimedWardog: snap.claimed.wardog,
       claimedWarcat: snap.claimed.warcat,
     });
@@ -218,9 +221,10 @@ export function ClaimPanel({
     }
   };
 
+  // Prefer live claimable from server snapshot. Fallback only while loading.
   const balances = snapshot
     ? snapshot.balances
-    : { wardog: 0, warcat: 0 }; // never fall back to total earned
+    : { wardog: 0, warcat: 0 };
   const claimed = snapshot?.claimed ?? { wardog: 0, warcat: 0 };
   const total = snapshot?.total ?? {
     wardog: balances.wardog + claimed.wardog,
