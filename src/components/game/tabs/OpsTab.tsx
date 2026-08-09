@@ -518,7 +518,8 @@ export function OpsTab({
 
         {preview?.protected && (
           <div className="mb-3 rounded-lg border border-amber-600/40 bg-amber-950/40 px-3 py-2 text-[0.65rem] text-amber-200">
-            ⚠️ Protected Leader — attacking risks 1 min jail + glory & WARDOG/WARCAT loss
+            ⚠️ Protected Leader — attacking risks 1 min jail + glory &
+            WARDOG/WARCAT loss
           </div>
         )}
 
@@ -602,7 +603,7 @@ export function OpsTab({
         </div>
       )}
 
-      {/* ── Kill Feed ──────────────────────────────────────────────────── */}
+      {/* ── Kill Feed (scroll box) ─────────────────────────────────────── */}
       <div className="mt-4 rounded-2xl border border-zinc-700 bg-zinc-900/90 p-4">
         <div className="mb-3 flex items-center gap-2">
           <Radio className="h-4 w-4 text-white" />
@@ -610,7 +611,7 @@ export function OpsTab({
             Live Ops Feed
           </h3>
         </div>
-        <div className="space-y-2">
+        <div className="max-h-40 space-y-2 overflow-y-auto overscroll-contain pr-0.5">
           {feed.length === 0 && (
             <div className="py-4 text-center text-[0.65rem] text-zinc-500">
               No recent activity
@@ -659,7 +660,7 @@ export function OpsTab({
         </div>
       </div>
 
-      {/* ── Personal History ───────────────────────────────────────────── */}
+      {/* ── Personal History (scroll box) ──────────────────────────────── */}
       <div className="mt-4 rounded-2xl border border-zinc-700 bg-zinc-900/90 p-4">
         <div className="mb-3 flex items-center gap-2">
           <History className="h-4 w-4 text-white" />
@@ -667,7 +668,7 @@ export function OpsTab({
             Your Ops History
           </h3>
         </div>
-        <div className="space-y-2">
+        <div className="max-h-48 space-y-2 overflow-y-auto overscroll-contain pr-0.5">
           {history.length === 0 && (
             <div className="py-4 text-center text-[0.65rem] text-zinc-500">
               No strikes yet
