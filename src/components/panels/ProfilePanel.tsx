@@ -1,5 +1,5 @@
 // src/components/panels/ProfilePanel.tsx
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { toast } from "sonner";
 import { Link } from "@tanstack/react-router";
 import {
@@ -9,6 +9,7 @@ import {
   ShieldAlert,
   RefreshCw,
   Wallet,
+  Coins,
 } from "lucide-react";
 import type { GameState } from "@/lib/game-state";
 import type { SessionUser } from "@/hooks/use-telegram-session";
@@ -20,6 +21,7 @@ import { MAX_ENERGY } from "@/lib/constants";
 import { TreasuryCard } from "@/components/TreasuryCard";
 import { redeemTraitorFn } from "@/lib/nations.functions";
 import { usePayments } from "@/components/payments/PaymentProvider";
+import { getClaims } from "@/lib/claims.functions";
 
 export type PayToken = "wardog" | "warcat";
 
@@ -36,11 +38,54 @@ export function ProfilePanel({
   const rank = getRankForGlory(state.glory);
   const [redeeming, setRedeeming] = useState<string | null>(null);
 
+  // Authoritative claimable numbers (same source as Earn → Claim)
+  const [claimable, setClaimable] = useState({
+    wardog: Number(state.wardogTokens ?? 0),
+    warcat: Number(state.warcatTokens ?? 0),
+  });
+  const [claimed, setClaimed] = useState({ wardog: 0, warcat: 0 });
+  const [totalEarned, setTotalEarned] = useState({
+    wardog: Number(state.wardogTokens ?? 0),
+    warcat: Number(state.warcatTokens ?? 0),
+  });
+  const [loadingBalances, setLoadingBalances] = useState(false);
+
   const isTraitor = Boolean(
     (state as any).isTraitor ?? (user as any)?.isTraitor,
   );
-  const wardog = Number(state.wardogTokens ?? 0);
-  const warcat = Number(state.warcatTokens ?? 0);
+
+  const wardog = claimable.wardog;
+  const warcat = claimable.warcat;
+
+  const refreshClaimable = useCallback(async () => {
+    if (!authenticated) return;
+    setLoadingBalances(true);
+    try {
+      const snap = await getClaims();
+      if (snap && "balances" in snap) {
+        setClaimable({
+          wardog: Number(snap.balances.wardog ?? 0),
+          warcat: Number(snap.balances.warcat ?? 0),
+        });
+        setClaimed({
+          wardog: Number(snap.claimed?.wardog ?? 0),
+          warcat: Number(snap.claimed?.warcat ?? 0),
+        });
+        setTotalEarned({
+          wardog: Number(snap.total?.wardog ?? 0),
+          warcat: Number(snap.total?.warcat ?? 0),
+        });
+      }
+    } catch {
+      // keep previous / local values
+    } finally {
+      setLoadingBalances(false);
+    }
+  }, [authenticated]);
+
+  useEffect(() => {
+    void refreshClaimable();
+  }, [refreshClaimable]);
 
   const copy = async (text: string, label: string) => {
     try {
@@ -52,10 +97,6 @@ export function ProfilePanel({
     }
   };
 
-  /**
-   * Paid redeem: wallet auth (connect if needed, stays until disconnect)
-   * then spend chosen token. Never native TON.
-   */
   const handleRedeemPaid = async (payWith: PayToken) => {
     if (redeeming) return;
     setRedeeming(payWith);
@@ -72,6 +113,7 @@ export function ProfilePanel({
         `Traitor status cleared with $${payWith === "wardog" ? "WARDOG" : "WARCAT"}`,
       );
       haptic("heavy");
+      void refreshClaimable();
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Redeem failed";
       if (msg.includes("insufficient_tokens")) {
@@ -88,7 +130,6 @@ export function ProfilePanel({
     }
   };
 
-  /** Cooldown path — free, no wallet */
   const handleRedeemCooldown = async () => {
     if (redeeming) return;
     setRedeeming("cooldown");
@@ -150,7 +191,7 @@ export function ProfilePanel({
         </div>
       </div>
 
-      {/* Wallet status — persists until disconnect */}
+      {/* Wallet status */}
       <div className="flex items-center justify-between rounded-xl border border-zinc-700 bg-zinc-900/80 px-3 py-2.5">
         <div className="flex items-center gap-2 min-w-0">
           <Wallet
@@ -242,25 +283,48 @@ export function ProfilePanel({
         </div>
       </div>
 
+      {/* Token Vault – now shows authoritative claimable */}
       <div className="rounded-2xl border border-zinc-700 bg-zinc-900 p-4">
-        <h3 className="mb-3 text-xs font-black uppercase tracking-widest text-zinc-500">
-          Token Vault (in-game)
-        </h3>
+        <div className="mb-3 flex items-center justify-between">
+          <h3 className="text-xs font-black uppercase tracking-widest text-zinc-500">
+            Token Vault (claimable rewards)
+          </h3>
+          <button
+            type="button"
+            onClick={() => void refreshClaimable()}
+            disabled={loadingBalances}
+            className="text-zinc-500 hover:text-white"
+            title="Refresh claimable balances"
+          >
+            <RefreshCw
+              className={`h-3.5 w-3.5 ${loadingBalances ? "animate-spin" : ""}`}
+            />
+          </button>
+        </div>
+
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           <TokenCard
             token={TOKENS.wardog}
-            balance={wardog}
+            claimable={wardog}
+            claimed={claimed.wardog}
+            total={totalEarned.wardog}
             onCopy={(t) => copy(t, "Address")}
           />
           <TokenCard
             token={TOKENS.warcat}
-            balance={warcat}
+            claimable={warcat}
+            claimed={claimed.warcat}
+            total={totalEarned.warcat}
             onCopy={(t) => copy(t, "Address")}
           />
         </div>
-        <div className="mt-2 text-[0.6rem] leading-relaxed text-zinc-500">
-          Balances are in-app $WARDOG / $WARCAT. Paid actions need a connected
-          wallet once; spend is always these tokens — never native TON.
+
+        <div className="mt-3 rounded-lg border border-emerald-500/20 bg-emerald-950/20 px-3 py-2 text-[0.6rem] leading-relaxed text-emerald-100/80">
+          <strong className="text-emerald-300">Claimable</strong> = merge
+          rewards you can still claim in Earn → Claim.
+          <br />
+          These numbers come from the same server source as the Claim Center so
+          they always match.
         </div>
       </div>
 
@@ -335,11 +399,15 @@ function Stat({ label, value }: { label: string; value: string | number }) {
 
 function TokenCard({
   token,
-  balance,
+  claimable,
+  claimed,
+  total,
   onCopy,
 }: {
   token: (typeof TOKENS)["wardog"];
-  balance: number;
+  claimable: number;
+  claimed: number;
+  total: number;
   onCopy: (text: string) => void;
 }) {
   return (
@@ -351,17 +419,35 @@ function TokenCard({
       }}
     >
       <div className="flex items-center justify-between">
-        <div className="text-[0.65rem] uppercase tracking-wider text-zinc-400">
+        <div
+          className="text-[0.65rem] font-black uppercase tracking-wider"
+          style={{ color: token.color }}
+        >
           {token.symbol}
         </div>
-        <div className="text-[0.55rem] uppercase tracking-wider text-zinc-600">
-          in-game
+        <div className="text-[0.55rem] uppercase tracking-wider text-zinc-500">
+          claimable
         </div>
       </div>
-      <div className="text-lg font-black text-white">{balance.toFixed(3)}</div>
+
+      <div className="mt-1 text-xl font-black text-white">
+        {claimable.toFixed(2)}
+      </div>
+
+      <div className="mt-1.5 space-y-0.5 text-[0.55rem] text-zinc-500">
+        <div>
+          Claimed · <span className="text-zinc-400">{claimed.toFixed(2)}</span>
+        </div>
+        <div>
+          Total earned ·{" "}
+          <span className="text-zinc-400">{total.toFixed(2)}</span>
+        </div>
+      </div>
+
       <button
+        type="button"
         onClick={() => onCopy(token.contractAddress)}
-        className="mt-1 flex w-full items-center justify-between rounded-lg bg-black/40 px-2 py-1.5 text-[0.6rem] font-mono text-zinc-300 hover:bg-black/60"
+        className="mt-2 flex w-full items-center justify-between rounded-lg bg-black/40 px-2 py-1.5 text-[0.6rem] font-mono text-zinc-300 hover:bg-black/60"
         title={token.contractAddress}
       >
         <span className="truncate">
@@ -369,6 +455,7 @@ function TokenCard({
         </span>
         <Copy className="h-3 w-3 shrink-0" />
       </button>
+
       <div className="mt-1 flex gap-1">
         <a
           href={token.tonviewer}

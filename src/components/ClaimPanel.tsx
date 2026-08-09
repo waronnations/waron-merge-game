@@ -230,6 +230,11 @@ export function ClaimPanel({
   const balances = snapshot
     ? snapshot.balances
     : { wardog: state.wardogTokens ?? 0, warcat: state.warcatTokens ?? 0 };
+  const claimed = snapshot?.claimed ?? { wardog: 0, warcat: 0 };
+  const total = snapshot?.total ?? {
+    wardog: balances.wardog + claimed.wardog,
+    warcat: balances.warcat + claimed.warcat,
+  };
   const minAmount = snapshot?.minAmount ?? 10;
   const pendingClaims =
     snapshot?.claims.filter((c) => c.status === "pending") ?? [];
@@ -327,7 +332,12 @@ export function ClaimPanel({
         )}
       </div>
 
-      <ClaimBalanceTiles balances={balances} />
+      {/* Improved tiles – now show Claimable / Claimed / Total */}
+      <ClaimBalanceTiles
+        balances={balances}
+        claimed={claimed}
+        total={total}
+      />
 
       {/* WARDOG claim */}
       <div className="space-y-3 rounded-2xl border border-zinc-700 bg-zinc-900/80 p-4">
