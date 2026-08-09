@@ -14,11 +14,14 @@ import {
   getTopupSnapshot,
   createTopup,
   confirmTopupFn,
+  cancelTopupFn,
 } from "@/lib/topups.functions";
 
 export type TopupToken = "wardog" | "warcat";
 
 type Snapshot = Awaited<ReturnType<typeof getTopupSnapshot>>;
+
+const QUICK_AMOUNTS = ["10", "25", "50", "100", "250"] as const;
 
 export function TopupModal({
   open,
@@ -71,6 +74,16 @@ export function TopupModal({
     spendableWarcat: 0,
   };
 
+  /** Release pending intent so the user can retry immediately. */
+  const releaseIntent = async (topupId: number | null | undefined) => {
+    if (topupId == null) return;
+    try {
+      await cancelTopupFn({ data: { topupId } });
+    } catch {
+      /* ignore — create will supersede anyway */
+    }
+  };
+
   const connectIfNeeded = async () => {
     if (address) return true;
     try {
@@ -83,6 +96,12 @@ export function TopupModal({
     return false;
   };
 
+  /**
+   * 1) Server creates pending top-up (ledger + comment)
+   * 2) Wallet prompts jetton transfer to Claim Treasury
+   * 3) On approve → auto-confirm credits spendable
+   * On cancel / build fail → release pending so retry is instant
+   */
   const submitTopup = async () => {
     if (!address) {
       await connectIfNeeded();
@@ -96,6 +115,10 @@ export function TopupModal({
     }
 
     setBusy(true);
+    let topupId: number | null = null;
+    /** True only after the user signed and BOC was returned. */
+    let signed = false;
+
     try {
       const intent = await createTopup({
         data: {
@@ -111,7 +134,7 @@ export function TopupModal({
             below_minimum: `Minimum top-up is ${minAmount}`,
             wallet_required: "Connect your TON wallet first",
             topup_already_pending:
-              "A top-up is already in progress for this token — try again in a minute",
+              "A top-up is already in progress for this token — try again in a moment",
             database_unavailable: "Top-up desk offline — try again",
           }[intent.error] ??
             intent.error ??
@@ -119,6 +142,8 @@ export function TopupModal({
         );
         return;
       }
+
+      topupId = intent.topup.id;
 
       const { Buffer } = await import("buffer");
       (globalThis as unknown as { Buffer: typeof Buffer }).Buffer = Buffer;
@@ -146,6 +171,7 @@ export function TopupModal({
           console.error("[buildTopupTransaction]", e);
           toast.error("Could not prepare jetton transfer");
         }
+        await releaseIntent(topupId);
         return;
       }
 
@@ -153,17 +179,20 @@ export function TopupModal({
       try {
         const result = await tonConnectUI.sendTransaction(tx);
         boc = result?.boc ?? null;
+        signed = true;
       } catch (txErr: unknown) {
         const msg = String((txErr as { message?: string })?.message ?? "");
         if (
           msg.toLowerCase().includes("cancel") ||
           msg.toLowerCase().includes("reject")
         ) {
-          toast.error("Transfer cancelled");
+          toast.error("Transfer cancelled — you can top up again right away");
         } else {
           console.error("[topup sendTransaction]", txErr);
           toast.error("Wallet rejected the transfer");
         }
+        // Jettons never left the wallet — free the lock instantly
+        await releaseIntent(topupId);
         return;
       }
 
@@ -175,6 +204,7 @@ export function TopupModal({
       });
 
       if (!confirmed.ok) {
+        // Coins may be in flight — do NOT cancel the pending row
         toast.error(
           "Transfer sent — credit pending. Reopen Top up in a moment if balance is delayed.",
         );
@@ -191,6 +221,10 @@ export function TopupModal({
     } catch (e) {
       console.error("[submitTopup]", e);
       toast.error("Top-up failed");
+      // Only release if the user never signed
+      if (!signed) {
+        await releaseIntent(topupId);
+      }
     } finally {
       setBusy(false);
     }
@@ -227,7 +261,8 @@ export function TopupModal({
           Send $WARDOG / $WARCAT from your connected wallet to the Claim
           Treasury. Your{" "}
           <strong className="text-zinc-300">spendable</strong> balance is
-          credited after you approve in the wallet.
+          credited after you approve in the wallet. Cancel anytime — the
+          pending lock is released instantly.
         </p>
 
         <div className="mb-3 grid grid-cols-2 gap-2">
@@ -249,76 +284,101 @@ export function TopupModal({
           </div>
         </div>
 
-        <div className="space-y-3">
-          <div className="flex gap-2">
-            {(["wardog", "warcat"] as const).map((t) => (
-              <button
-                key={t}
-                type="button"
-                disabled={busy}
-                onClick={() => setToken(t)}
-                className={cn(
-                  "flex-1 rounded-xl py-2 text-xs font-black uppercase tracking-wider",
-                  token === t
-                    ? t === "wardog"
-                      ? "bg-amber-500 text-black"
-                      : "bg-sky-500 text-black"
-                    : "bg-zinc-900 text-zinc-500",
-                )}
-              >
-                {TOKENS[t].symbol}
-              </button>
-            ))}
-          </div>
-
-          <label className="block">
-            <span className="mb-1 block text-[0.6rem] font-bold uppercase tracking-wider text-zinc-500">
-              Amount (min {minAmount})
-            </span>
-            <input
-              type="number"
-              min={minAmount}
-              step="1"
-              value={amount}
-              disabled={busy}
-              onChange={(e) => setAmount(e.target.value)}
-              className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white outline-none focus:border-emerald-500/50"
-            />
-          </label>
-
-          {address ? (
-            <p className="text-center font-mono text-[0.65rem] text-zinc-500">
-              From {shortenAddress(address)}
-            </p>
-          ) : (
-            <p className="text-center text-[0.7rem] text-amber-400">
-              Wallet not connected — tap below to connect
-            </p>
-          )}
-
+        <div className="mb-3 flex gap-2">
           <button
             type="button"
             disabled={busy}
-            onClick={() => void submitTopup()}
+            onClick={() => setToken("wardog")}
             className={cn(
-              "flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-black uppercase tracking-wider",
-              busy
-                ? "cursor-not-allowed bg-zinc-800 text-zinc-500"
-                : "bg-emerald-500 text-black hover:bg-emerald-400",
+              "flex-1 rounded-xl py-2 text-xs font-black uppercase tracking-wider transition",
+              token === "wardog"
+                ? "bg-amber-500/20 text-amber-300 ring-1 ring-amber-500/50"
+                : "bg-zinc-900 text-zinc-500 hover:text-zinc-300",
             )}
           >
-            {busy ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <ArrowDownToLine className="h-4 w-4" />
+            $WARDOG
+          </button>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => setToken("warcat")}
+            className={cn(
+              "flex-1 rounded-xl py-2 text-xs font-black uppercase tracking-wider transition",
+              token === "warcat"
+                ? "bg-sky-500/20 text-sky-300 ring-1 ring-sky-500/50"
+                : "bg-zinc-900 text-zinc-500 hover:text-zinc-300",
             )}
-            {busy
-              ? "Waiting for wallet…"
-              : address
-                ? `Send ${TOKENS[token].symbol}`
-                : "Connect wallet"}
+          >
+            $WARCAT
           </button>
         </div>
+
+        <label className="mb-1 block text-[0.6rem] font-bold uppercase tracking-wider text-zinc-500">
+          Amount (min {minAmount})
+        </label>
+        <input
+          type="number"
+          min={minAmount}
+          step="1"
+          value={amount}
+          disabled={busy}
+          onChange={(e) => setAmount(e.target.value)}
+          className="mb-2 w-full rounded-xl border border-zinc-700 bg-black/50 px-4 py-3 text-sm font-bold text-white outline-none focus:border-zinc-500"
+        />
+
+        <div className="mb-4 flex flex-wrap gap-1.5">
+          {QUICK_AMOUNTS.map((q) => (
+            <button
+              key={q}
+              type="button"
+              disabled={busy}
+              onClick={() => setAmount(q)}
+              className={cn(
+                "rounded-lg px-2.5 py-1 text-[0.65rem] font-bold transition",
+                amount === q
+                  ? "bg-zinc-100 text-zinc-900"
+                  : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700",
+              )}
+            >
+              {q}
+            </button>
+          ))}
+        </div>
+
+        {address ? (
+          <p className="mb-3 truncate text-[0.6rem] text-zinc-600">
+            Wallet · {shortenAddress(address)}
+          </p>
+        ) : (
+          <p className="mb-3 text-[0.6rem] text-amber-500/80">
+            Connect a TON wallet to continue
+          </p>
+        )}
+
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => void submitTopup()}
+          className={cn(
+            "flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-black uppercase tracking-wider text-white transition",
+            token === "wardog"
+              ? "bg-gradient-to-r from-amber-600 to-orange-500 hover:from-amber-500 hover:to-orange-400"
+              : "bg-gradient-to-r from-sky-600 to-blue-500 hover:from-sky-500 hover:to-blue-400",
+            busy && "cursor-not-allowed opacity-60",
+          )}
+        >
+          {busy ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Waiting for wallet…
+            </>
+          ) : (
+            <>
+              <ArrowDownToLine className="h-4 w-4" />
+              Top up {amount || "…"} {TOKENS[token].symbol}
+            </>
+          )}
+        </button>
       </div>
     </div>
   );

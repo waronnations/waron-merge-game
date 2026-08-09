@@ -2,6 +2,9 @@
  * Player top-ups → spendable balances.
  * Jettons go to ClaimTreasury; spendable is credited after confirm.
  * Does not touch claimable vault (wardog_tokens − claimed_*).
+ *
+ * Pending intents are released immediately when the user cancels the
+ * wallet prompt or the transfer never leaves the wallet.
  */
 
 import { sql } from "@/lib/db.server";
@@ -88,6 +91,9 @@ export async function listTopups(
 /**
  * Create a pending top-up. Client sends jettons to ClaimTreasury
  * with the returned comment in the transfer memo when possible.
+ *
+ * Any previous pending intent for the same user+token is expired first
+ * so a cancelled wallet prompt never blocks a retry.
  */
 export async function createTopupIntent(
   userId: number,
@@ -111,29 +117,16 @@ export async function createTopupIntent(
     return { ok: false, error: "wallet_required" };
   }
 
-  // Expire old pending for this user+token (keep ledger clean)
+  // Release every prior pending for this user+token (timed-out OR abandoned).
+  // Coins only leave the wallet after the user signs — so this is safe.
   await sql`
     UPDATE topups
        SET status = 'expired'
      WHERE user_id = ${userId}
        AND token = ${token}
        AND status = 'pending'
-       AND expires_at < NOW()
   `;
 
-  const pending = await sql`
-    SELECT id FROM topups
-    WHERE user_id = ${userId}
-      AND token = ${token}
-      AND status = 'pending'
-      AND expires_at >= NOW()
-    LIMIT 1
-  `;
-  if (pending.rows[0]) {
-    return { ok: false, error: "topup_already_pending" };
-  }
-
-  // Placeholder comment; finalized after we have id
   const inserted = await sql`
     INSERT INTO topups (
       user_id, token, amount, status, wallet_address, comment, expires_at
@@ -145,7 +138,7 @@ export async function createTopupIntent(
       'pending',
       ${walletAddress},
       NULL,
-      NOW() + (${TOPUP_EXPIRES_MINUTES} || ' minutes')::interval
+      NOW() + (${TOPUP_EXPIRES_MINUTES} * INTERVAL '1 minute')
     )
     RETURNING id, token, amount, status, wallet_address, tx_hash, comment,
               created_at, confirmed_at, expires_at
@@ -169,6 +162,29 @@ export async function createTopupIntent(
     depositAddress: getTreasuryDepositAddress(),
     comment,
   };
+}
+
+/**
+ * Cancel a pending top-up (wallet cancelled / build failed / never signed).
+ * Does not touch spendable — nothing was credited yet.
+ * Jettons stay in the user's wallet; only the ledger lock is released.
+ */
+export async function cancelPendingTopup(
+  userId: number,
+  topupId: number,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const res = await sql`
+    UPDATE topups
+       SET status = 'expired'
+     WHERE id = ${topupId}
+       AND user_id = ${userId}
+       AND status = 'pending'
+    RETURNING id
+  `;
+  if (!res.rows[0]) {
+    return { ok: false, error: "not_found_or_not_pending" };
+  }
+  return { ok: true };
 }
 
 /**
@@ -217,13 +233,18 @@ export async function confirmTopup(
     return { ok: false, error: "expired" };
   }
 
-  const dup = await sql`
-    SELECT id FROM topups
-    WHERE tx_hash = ${hash} AND id <> ${topupId}
-    LIMIT 1
-  `;
-  if (dup.rows[0]) {
-    return { ok: false, error: "tx_already_used" };
+  const isProvisional =
+    hash.startsWith("boc-") || hash === "pending" || hash.length > 128;
+
+  if (!isProvisional) {
+    const dup = await sql`
+      SELECT id FROM topups
+      WHERE tx_hash = ${hash} AND id <> ${topupId}
+      LIMIT 1
+    `;
+    if (dup.rows[0]) {
+      return { ok: false, error: "tx_already_used" };
+    }
   }
 
   const amount = normalizeToken(Number(row.amount));
@@ -255,7 +276,7 @@ export async function confirmTopup(
   await sql`
     UPDATE topups
        SET status = 'confirmed',
-           tx_hash = ${hash},
+           tx_hash = ${isProvisional ? null : hash},
            confirmed_at = NOW()
      WHERE id = ${topupId}
        AND user_id = ${userId}

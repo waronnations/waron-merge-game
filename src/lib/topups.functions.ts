@@ -7,6 +7,7 @@ import {
   MIN_TOPUP_AMOUNT,
   createTopupIntent,
   confirmTopup,
+  cancelPendingTopup,
   getSpendableBalances,
   listTopups,
   getTreasuryDepositAddress,
@@ -69,4 +70,22 @@ export const confirmTopupFn = createServerFn({ method: "POST" })
     const userId = await requireUserId();
     assertRateLimit(`topup:confirm:${userId}`, 20, 60_000);
     return confirmTopup(userId, data.topupId, data.txHash);
+  });
+
+const CancelTopupInput = z.object({
+  topupId: z.number().int().positive(),
+});
+
+/**
+ * Release a pending top-up after wallet cancel / build failure.
+ * Instantly frees the lock so the user can retry.
+ */
+export const cancelTopupFn = createServerFn({ method: "POST" })
+  .validator((input: unknown) => CancelTopupInput.parse(input))
+  .handler(async ({ data }) => {
+    if (!hasDatabase()) return { ok: false as const, error: "database_unavailable" };
+    await ensureSchema();
+    const userId = await requireUserId();
+    assertRateLimit(`topup:cancel:${userId}`, 30, 60_000);
+    return cancelPendingTopup(userId, data.topupId);
   });
