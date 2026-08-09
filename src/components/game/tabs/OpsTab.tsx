@@ -5,16 +5,13 @@ import {
   Crosshair,
   RefreshCw,
   ShoppingBag,
-  Swords,
   History,
   Loader2,
   Radio,
   Shield,
   Search,
   Users,
-  ExternalLink,
   Share2,
-  MessageCircle,
   Megaphone,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -27,8 +24,6 @@ import {
   openWaronCommunity,
   shareStrikeRevenge,
   shareStrikeFlex,
-  buildStrikeRevengeText,
-  buildStrikeFlexText,
 } from "@/lib/telegram";
 import {
   buildReferralLink,
@@ -115,6 +110,12 @@ function fmtToken(n: number): string {
   return n >= 10 ? n.toFixed(1) : n.toFixed(2);
 }
 
+function priceFor(q: Quote | undefined, baseCost: number): number {
+  const final = Number(q?.final);
+  if (Number.isFinite(final) && final > 0) return final;
+  return baseCost;
+}
+
 function timeAgo(ts: number): string {
   const s = Math.max(0, Math.floor((Date.now() - ts) / 1000));
   if (s < 60) return `${s}s`;
@@ -147,6 +148,8 @@ export function OpsTab({
     useState<BattlefieldWeaponId>("knife");
   const [tick, setTick] = useState(0);
   const [lastHit, setLastHit] = useState<LastHit | null>(null);
+
+  void tick;
 
   const referralCode = state.referralCode?.trim() || "";
   const referralLink = referralCode
@@ -282,17 +285,30 @@ export function OpsTab({
 
   const handleBuy = async (weaponId: BattlefieldWeaponId, payWith: PayToken) => {
     if (busy) return;
-    setBusy(`buy-${weaponId}`);
+    setBusy(`buy-${weaponId}-${payWith}`);
     try {
-      await buyBattlefieldWeaponFn({ data: { weaponId, payWith } });
+      const res = await buyBattlefieldWeaponFn({
+        data: { weaponId, payWith },
+      });
       haptic("medium");
-      toast.success(`Bought ${BATTLEFIELD_WEAPONS[weaponId].name}`);
+      toast.success(
+        `${BATTLEFIELD_WEAPONS[weaponId].name} acquired · paid ${fmtToken(
+          Number((res as any).cost ?? 0),
+        )} (tax ${fmtToken(Number((res as any).tax ?? 0))})`,
+      );
       await refresh();
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
-      if (msg.includes("insufficient_balance"))
-        toast.error("Not enough spendable tokens");
-      else toast.error("Purchase failed");
+      if (
+        msg.includes("insufficient_spendable") ||
+        msg.includes("insufficient_balance")
+      ) {
+        toast.error("Need topped-up balance — use Top Up");
+      } else if (msg.includes("unauthorized")) {
+        toast.error("Sign in via Telegram first");
+      } else {
+        toast.error("Purchase failed");
+      }
     } finally {
       setBusy(null);
     }
@@ -311,7 +327,6 @@ export function OpsTab({
         data: { target, weaponId: strikeWeapon },
       });
 
-      // ── Protected Leader JAIL path ──────────────────────────────────────
       if ((res as any).jailed) {
         haptic("heavy");
         toast.error(
@@ -343,9 +358,7 @@ export function OpsTab({
           shareFlex(hit);
         }, 700);
       } else {
-        toast.message(
-          `Miss on ${res.victimName ?? "target"} — weapon spent`,
-        );
+        toast.message(`Miss on ${res.victimName ?? "target"} — weapon spent`);
       }
       await refresh();
     } catch (e: unknown) {
@@ -410,6 +423,7 @@ export function OpsTab({
               const owned = inv?.weapons[id] ?? 0;
               const cd = inv?.cooldowns[id] ?? 0;
               const onCd = cd > Date.now();
+              const price = priceFor(q, w.cost);
               return (
                 <div
                   key={id}
@@ -417,7 +431,7 @@ export function OpsTab({
                 >
                   <div className="flex-1">
                     <div className="text-xs font-black text-white">
-                      {w.name} · {owned}
+                      {w.emoji} {w.name} · {owned}
                     </div>
                     <div className="text-[0.6rem] text-zinc-500">
                       {w.desc}
@@ -435,7 +449,7 @@ export function OpsTab({
                       onClick={() => void handleBuy(id, "wardog")}
                       className="rounded-lg bg-red-900/60 px-2.5 py-1.5 text-[0.6rem] font-black uppercase text-red-200 disabled:opacity-40"
                     >
-                      {q ? fmtToken(q.final) : w.cost} WD
+                      {fmtToken(price)} WD
                     </button>
                     <button
                       type="button"
@@ -443,7 +457,7 @@ export function OpsTab({
                       onClick={() => void handleBuy(id, "warcat")}
                       className="rounded-lg bg-purple-900/60 px-2.5 py-1.5 text-[0.6rem] font-black uppercase text-purple-200 disabled:opacity-40"
                     >
-                      {q ? fmtToken(q.final) : w.cost} WC
+                      {fmtToken(price)} WC
                     </button>
                   </div>
                 </div>
@@ -588,7 +602,7 @@ export function OpsTab({
         </div>
       )}
 
-      {/* ── Kill Feed (global events) ──────────────────────────────────── */}
+      {/* ── Kill Feed ──────────────────────────────────────────────────── */}
       <div className="mt-4 rounded-2xl border border-zinc-700 bg-zinc-900/90 p-4">
         <div className="mb-3 flex items-center gap-2">
           <Radio className="h-4 w-4 text-white" />
@@ -682,9 +696,7 @@ export function OpsTab({
               </div>
               <div className="text-right">
                 <div
-                  className={
-                    row.hit ? "text-emerald-400" : "text-zinc-500"
-                  }
+                  className={row.hit ? "text-emerald-400" : "text-zinc-500"}
                 >
                   {row.hit ? `+${row.gloryGained}` : "miss"}
                 </div>

@@ -278,49 +278,105 @@ export async function getBattlefieldInventory(userId: number): Promise<{
   return { weapons: inv, cooldowns, attacksToday };
 }
 
-export async function getBattlefieldArmoryQuotes() {
-  const health = await getTreasuryHealth();
-  return Object.values(BATTLEFIELD_WEAPONS).map((w) => {
-    const q = quoteDynamicTax(w.cost, health);
-    return {
-      weaponId: w.id as BattlefieldWeaponId,
-      base: w.cost,
+export async function getBattlefieldArmoryQuotes(): Promise<
+  Array<{
+    weaponId: BattlefieldWeaponId;
+    base: number;
+    final: number;
+    tax: number;
+    multiplier: number;
+    zone: string;
+  }>
+> {
+  const out = [];
+  for (const w of Object.values(BATTLEFIELD_WEAPONS)) {
+    const q = await quoteDynamicTax(w.cost);
+    out.push({
+      weaponId: w.id,
+      base: q.base,
       final: q.final,
       tax: q.tax,
       multiplier: q.multiplier,
       zone: q.zone,
-    };
-  });
+    });
+  }
+  return out;
 }
 
 export async function buyBattlefieldWeapon(
   userId: number,
   weaponId: BattlefieldWeaponId,
-  payWith: PayToken,
-): Promise<{ ok: true; qty: number } | { ok: false; error: string }> {
+  payWith: PayToken = "wardog",
+): Promise<
+  | {
+      ok: true;
+      inventory: WeaponInv;
+      base: number;
+      cost: number;
+      tax: number;
+      multiplier: number;
+      zone: string;
+    }
+  | { ok: false; error: string }
+> {
+  await ensureBattlefieldSchema();
   const weapon = BATTLEFIELD_WEAPONS[weaponId];
   if (!weapon) return { ok: false, error: "invalid_weapon" };
-
-  const health = await getTreasuryHealth();
-  const quote = quoteDynamicTax(weapon.cost, health);
-  const spendable = await getSpendableBalances(userId);
-  const bal = payWith === "wardog" ? spendable.wardog : spendable.warcat;
-  if (bal < quote.final) return { ok: false, error: "insufficient_balance" };
-
-  const debited = await debitSpendable(userId, payWith as TopupToken, quote.final);
-  if (!debited) return { ok: false, error: "insufficient_balance" };
-
-  if (quote.tax > 0) {
-    await recordTreasuryDeposit({
-      userId,
-      token: payWith,
-      amount: quote.tax,
-      reason: `ops_weapon_${weaponId}`,
-    });
+  if (payWith !== "wardog" && payWith !== "warcat") {
+    return { ok: false, error: "invalid_pay_token" };
   }
 
-  const qty = await addInventory(userId, weaponId, 1);
-  return { ok: true, qty };
+  const base = weapon.cost;
+  if (!(base > 0)) return { ok: false, error: "invalid_weapon_cost" };
+
+  const health = await getTreasuryHealth();
+  const total = normalizeToken(await applyDynamicTax(base, payWith));
+  const tax = normalizeToken(Math.max(0, total - base));
+  if (!(total > 0)) return { ok: false, error: "invalid_amount" };
+
+  const spendable = await getSpendableBalances(userId);
+  const have =
+    payWith === "wardog"
+      ? spendable.spendableWardog
+      : spendable.spendableWarcat;
+
+  if (have < total - 1e-6) {
+    return { ok: false, error: "insufficient_spendable" };
+  }
+
+  const deb = await debitSpendable(userId, payWith as TopupToken, total);
+  if (!deb.ok) {
+    return { ok: false, error: "insufficient_spendable" };
+  }
+
+  await addInventory(userId, weaponId, 1);
+  const inv = await readInventory(userId);
+
+  await recordTreasuryDeposit({
+    userId,
+    source: `battlefield_buy:${weaponId}`,
+    wardog: payWith === "wardog" ? tax : 0,
+    warcat: payWith === "warcat" ? tax : 0,
+    baseAmount: base,
+    multiplier: health.taxMultiplier,
+    details: {
+      weaponId,
+      payWith,
+      total,
+      tax,
+      zone: health.zone,
+    },
+  });
+
+  return {
+    ok: true,
+    inventory: inv,
+    base,
+    cost: total,
+    tax,
+    multiplier: health.taxMultiplier,
+    zone: health.zone,
+  };
 }
 
 export async function battlefieldStrike(
@@ -382,7 +438,6 @@ export async function battlefieldStrike(
     const consumed = await consumeWeapon(attackerId, weaponId);
     if (!consumed) return { ok: false, error: "no_weapon" };
 
-    // Deduct glory + tokens
     const prog = await loadProgress(attackerId);
     if (prog) {
       const state = { ...(prog.state as any) };
@@ -403,7 +458,6 @@ export async function battlefieldStrike(
       await writeProgress(attackerId, state, { touchSyncClock: false });
     }
 
-    // Set 1-minute jail
     const jailUntil = new Date(Date.now() + OPS_PROTECTED_LEADER_JAIL_MS);
     await sql`
       INSERT INTO ops_jail (user_id, jail_until, reason)
@@ -412,7 +466,6 @@ export async function battlefieldStrike(
       DO UPDATE SET jail_until = EXCLUDED.jail_until, reason = EXCLUDED.reason
     `;
 
-    // Weapon cooldown still applies
     const ready = new Date(Date.now() + weapon.cooldownSec * 1000);
     await sql`
       INSERT INTO ops_cooldowns (user_id, weapon_id, ready_at)
@@ -421,7 +474,6 @@ export async function battlefieldStrike(
       DO UPDATE SET ready_at = EXCLUDED.ready_at
     `;
 
-    // History + global feed entry
     await sql`
       INSERT INTO ops_history (
         attacker_id, victim_id, victim_telegram_id, weapon_id, hit,
@@ -442,7 +494,6 @@ export async function battlefieldStrike(
       )
     `;
 
-    // Notify the leader
     await notifyUser(
       target.userId,
       target.telegramId,
@@ -464,12 +515,10 @@ export async function battlefieldStrike(
     };
   }
 
-  // Normal protected members stay blocked
   if (await isNationProtected(target.userId)) {
     return { ok: false, error: "target_protected" };
   }
 
-  // ── Normal strike path ───────────────────────────────────────────────────
   const invSnap = await getBattlefieldInventory(attackerId);
   if (invSnap.attacksToday >= BATTLEFIELD_DAILY_ATTACK_CAP) {
     return { ok: false, error: "daily_cap" };
