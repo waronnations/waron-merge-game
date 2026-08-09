@@ -37,17 +37,17 @@ export function ProfilePanel({
   const rank = getRankForGlory(state.glory);
   const [redeeming, setRedeeming] = useState<string | null>(null);
 
-  // Authoritative claimable (same source as Earn → Claim) — never fall back to total earned
+  // Authoritative claimable (same source as Earn → Claim)
   const [claimable, setClaimable] = useState({ wardog: 0, warcat: 0 });
   const [claimed, setClaimed] = useState({ wardog: 0, warcat: 0 });
   const [totalEarned, setTotalEarned] = useState({ wardog: 0, warcat: 0 });
   const [loadingBalances, setLoadingBalances] = useState(false);
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
 
   const isTraitor = Boolean(
     (state as any).isTraitor ?? (user as any)?.isTraitor,
   );
 
-  // Display these (authoritative claimable only)
   const wardog = claimable.wardog;
   const warcat = claimable.warcat;
 
@@ -69,6 +69,7 @@ export function ProfilePanel({
           wardog: Number(snap.total?.wardog ?? 0),
           warcat: Number(snap.total?.warcat ?? 0),
         });
+        setHasLoadedOnce(true);
       }
     } catch {
       // keep previous values
@@ -77,9 +78,10 @@ export function ProfilePanel({
     }
   }, [authenticated]);
 
+  // Initial + whenever auth or ledger totals change (after merges / spends)
   useEffect(() => {
     void refreshClaimable();
-  }, [refreshClaimable]);
+  }, [refreshClaimable, state.wardogTokens, state.warcatTokens]);
 
   const copy = async (text: string, label: string) => {
     try {
@@ -277,7 +279,7 @@ export function ProfilePanel({
         </div>
       </div>
 
-      {/* Token Vault – always live claimable (exact match to Earn) */}
+      {/* Token Vault – live claimable (matches Earn / Claim) */}
       <div className="rounded-2xl border border-zinc-700 bg-zinc-900 p-4">
         <div className="mb-3 flex items-center justify-between">
           <h3 className="text-xs font-black uppercase tracking-widest text-zinc-500">
@@ -302,6 +304,7 @@ export function ProfilePanel({
             claimable={wardog}
             claimed={claimed.wardog}
             total={totalEarned.wardog}
+            loading={!hasLoadedOnce && loadingBalances}
             onCopy={(t) => copy(t, "Address")}
           />
           <TokenCard
@@ -309,16 +312,18 @@ export function ProfilePanel({
             claimable={warcat}
             claimed={claimed.warcat}
             total={totalEarned.warcat}
+            loading={!hasLoadedOnce && loadingBalances}
             onCopy={(t) => copy(t, "Address")}
           />
         </div>
 
         <div className="mt-3 rounded-lg border border-emerald-500/20 bg-emerald-950/20 px-3 py-2 text-[0.6rem] leading-relaxed text-emerald-100/80">
           <strong className="text-emerald-300">Claimable</strong> = merge
-          rewards you can still claim in Earn → Claim.
+          rewards still available to claim in Earn → Claim (net of all protocol
+          taxes).
           <br />
-          These numbers come from the exact same server source as the Claim
-          Center, so Earn and Base always match.
+          Same server source as the Claim Center. Taxes on shop / energy /
+          nations already reduced the ledger before these numbers appear.
         </div>
       </div>
 
@@ -396,12 +401,14 @@ function TokenCard({
   claimable,
   claimed,
   total,
+  loading,
   onCopy,
 }: {
   token: (typeof TOKENS)["wardog"];
   claimable: number;
   claimed: number;
   total: number;
+  loading?: boolean;
   onCopy: (text: string) => void;
 }) {
   return (
@@ -425,16 +432,21 @@ function TokenCard({
       </div>
 
       <div className="mt-1 text-xl font-black text-white">
-        {claimable.toFixed(2)}
+        {loading ? "…" : claimable.toFixed(2)}
       </div>
 
       <div className="mt-1.5 space-y-0.5 text-[0.55rem] text-zinc-500">
         <div>
-          Claimed · <span className="text-zinc-400">{claimed.toFixed(2)}</span>
+          Claimed ·{" "}
+          <span className="text-zinc-400">
+            {loading ? "…" : claimed.toFixed(2)}
+          </span>
         </div>
         <div>
           Total earned ·{" "}
-          <span className="text-zinc-400">{total.toFixed(2)}</span>
+          <span className="text-zinc-400">
+            {loading ? "…" : total.toFixed(2)}
+          </span>
         </div>
       </div>
 
