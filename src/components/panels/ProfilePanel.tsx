@@ -37,23 +37,17 @@ export function ProfilePanel({
   const rank = getRankForGlory(state.glory);
   const [redeeming, setRedeeming] = useState<string | null>(null);
 
-  // Authoritative claimable (same source as Earn → Claim)
-  const [claimable, setClaimable] = useState({
-    wardog: Number(state.wardogTokens ?? 0),
-    warcat: Number(state.warcatTokens ?? 0),
-  });
+  // Authoritative claimable (same source as Earn → Claim) — never fall back to total earned
+  const [claimable, setClaimable] = useState({ wardog: 0, warcat: 0 });
   const [claimed, setClaimed] = useState({ wardog: 0, warcat: 0 });
-  const [totalEarned, setTotalEarned] = useState({
-    wardog: Number(state.wardogTokens ?? 0),
-    warcat: Number(state.warcatTokens ?? 0),
-  });
+  const [totalEarned, setTotalEarned] = useState({ wardog: 0, warcat: 0 });
   const [loadingBalances, setLoadingBalances] = useState(false);
 
   const isTraitor = Boolean(
     (state as any).isTraitor ?? (user as any)?.isTraitor,
   );
 
-  // Display these (authoritative)
+  // Display these (authoritative claimable only)
   const wardog = claimable.wardog;
   const warcat = claimable.warcat;
 
@@ -140,7 +134,7 @@ export function ProfilePanel({
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Redeem failed";
       if (msg.includes("cooldown_not_over")) {
-        toast.error("Cooldownoldown not over yet");
+        toast.error("Cooldown not over yet");
       } else if (msg.includes("not_traitor")) {
         toast.error("You are not a traitor");
       } else {
@@ -283,7 +277,7 @@ export function ProfilePanel({
         </div>
       </div>
 
-      {/* Token Vault – now always shows live claimable (matches Earn) */}
+      {/* Token Vault – always live claimable (exact match to Earn) */}
       <div className="rounded-2xl border border-zinc-700 bg-zinc-900 p-4">
         <div className="mb-3 flex items-center justify-between">
           <h3 className="text-xs font-black uppercase tracking-widest text-zinc-500">

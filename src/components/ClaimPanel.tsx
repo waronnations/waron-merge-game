@@ -220,7 +220,7 @@ export function ClaimPanel({
 
   const balances = snapshot
     ? snapshot.balances
-    : { wardog: state.wardogTokens ?? 0, warcat: state.warcatTokens ?? 0 };
+    : { wardog: 0, warcat: 0 }; // never fall back to total earned
   const claimed = snapshot?.claimed ?? { wardog: 0, warcat: 0 };
   const total = snapshot?.total ?? {
     wardog: balances.wardog + claimed.wardog,
