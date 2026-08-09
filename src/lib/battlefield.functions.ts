@@ -24,6 +24,7 @@ import {
   listOpsHistory,
   listOpsKillFeed,
   lookupTargetPreview,
+  getOpsJailStatus,
   type PayToken,
 } from "@/lib/battlefield.server";
 
@@ -156,7 +157,7 @@ export const listOpsHistoryFn = createServerFn({ method: "GET" })
     return listOpsHistory(userId, data.limit ?? 30);
   });
 
-/** Global kill feed (recent hits). */
+/** Global kill feed (recent hits + jail events). */
 export const listOpsKillFeedFn = createServerFn({ method: "GET" })
   .validator((input: unknown) =>
     z
@@ -185,3 +186,14 @@ export const lookupBattlefieldTargetFn = createServerFn({ method: "GET" })
     await requireUserId();
     return lookupTargetPreview(data.query.trim());
   });
+
+/** Current jail status for the logged-in player */
+export const getOpsJailStatusFn = createServerFn({ method: "GET" }).handler(
+  async () => {
+    if (!hasDatabase()) return { active: false, remainingMs: 0, reason: null };
+    await ensureSchema();
+    await ensureBattlefieldSchema();
+    const userId = await requireUserId();
+    return getOpsJailStatus(userId);
+  },
+);

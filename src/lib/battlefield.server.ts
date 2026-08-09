@@ -10,6 +10,9 @@ import { addTokens, normalizeToken } from "@/lib/tokens";
 import {
   BATTLEFIELD_WEAPONS,
   BATTLEFIELD_DAILY_ATTACK_CAP,
+  OPS_PROTECTED_LEADER_JAIL_MS,
+  OPS_PROTECTED_LEADER_GLORY_LOSS,
+  OPS_PROTECTED_LEADER_TOKEN_LOSS,
   type BattlefieldWeaponId,
 } from "@/lib/constants";
 import {
@@ -63,7 +66,6 @@ export async function ensureBattlefieldSchema(): Promise<void> {
     )
   `;
 
-  /** Durable ammo — never stored in progress.state (client sync would wipe it). */
   await sql`
     CREATE TABLE IF NOT EXISTS ops_inventory (
       user_id     BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -73,6 +75,14 @@ export async function ensureBattlefieldSchema(): Promise<void> {
     )
   `;
   await sql`CREATE INDEX IF NOT EXISTS ops_inventory_user_idx ON ops_inventory (user_id)`;
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS ops_jail (
+      user_id     BIGINT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      jail_until  TIMESTAMPTZ NOT NULL,
+      reason      TEXT NOT NULL DEFAULT 'attacked_protected_leader'
+    )
+  `;
 }
 
 async function readInventory(userId: number): Promise<WeaponInv> {
@@ -114,7 +124,6 @@ async function addInventory(
   return inv[weaponId] ?? 0;
 }
 
-/** Consume 1 unit; returns false if none left. */
 async function consumeWeapon(
   userId: number,
   weaponId: string,
@@ -127,7 +136,7 @@ async function consumeWeapon(
       AND qty >= 1
     RETURNING qty
   `;
-  return res.rowCount > 0;
+  return (res.rowCount ?? 0) > 0;
 }
 
 export async function resolveBattlefieldTarget(
@@ -205,6 +214,25 @@ async function isNationProtected(userId: number): Promise<boolean> {
   return new Date(row.protection_expires_at as string).getTime() > Date.now();
 }
 
+async function isProtectedNationLeader(userId: number): Promise<boolean> {
+  const res = await sql`
+    SELECT n.is_protected, n.protection_expires_at, n.leader_id
+    FROM users u
+    JOIN nations n ON n.id = u.nation_id
+    WHERE u.id = ${userId}
+    LIMIT 1
+  `;
+  const row = res.rows[0];
+  if (!row) return false;
+  const protectedUntil = row.protection_expires_at
+    ? new Date(String(row.protection_expires_at)).getTime()
+    : 0;
+  const isCurrentlyProtected =
+    Boolean(row.is_protected) &&
+    (protectedUntil === 0 || protectedUntil > Date.now());
+  return isCurrentlyProtected && Number(row.leader_id) === userId;
+}
+
 async function notifyUser(
   userId: number,
   telegramId: number,
@@ -229,129 +257,70 @@ export async function getBattlefieldInventory(userId: number): Promise<{
   await ensureBattlefieldSchema();
   const inv = await readInventory(userId);
 
-  const cds = await sql`
-    SELECT weapon_id, EXTRACT(EPOCH FROM ready_at) * 1000 AS ready_ms
-    FROM ops_cooldowns
+  const cdsRes = await sql`
+    SELECT weapon_id, ready_at FROM ops_cooldowns
     WHERE user_id = ${userId}
   `;
   const cooldowns: Record<string, number> = {};
-  for (const r of cds.rows) {
-    cooldowns[String(r.weapon_id)] = Number(r.ready_ms);
+  for (const r of cdsRes.rows) {
+    cooldowns[String(r.weapon_id)] = new Date(r.ready_at as string).getTime();
   }
 
   const day = utcDayKey();
-  const atk = await sql`
+  const atkRes = await sql`
     SELECT COUNT(*)::int AS c FROM ops_history
     WHERE attacker_id = ${userId}
-      AND created_at >= (${day}::date)
+      AND created_at >= ${day}::date
       AND created_at < (${day}::date + INTERVAL '1 day')
   `;
-  return {
-    weapons: inv,
-    cooldowns,
-    attacksToday: Number(atk.rows[0]?.c ?? 0),
-  };
+  const attacksToday = Number(atkRes.rows[0]?.c ?? 0);
+
+  return { weapons: inv, cooldowns, attacksToday };
 }
 
-export async function getBattlefieldArmoryQuotes(): Promise<
-  Array<{
-    weaponId: BattlefieldWeaponId;
-    base: number;
-    final: number;
-    tax: number;
-    multiplier: number;
-    zone: string;
-  }>
-> {
-  const out = [];
-  for (const w of Object.values(BATTLEFIELD_WEAPONS)) {
-    const q = await quoteDynamicTax(w.cost);
-    out.push({
-      weaponId: w.id,
-      base: q.base,
+export async function getBattlefieldArmoryQuotes() {
+  const health = await getTreasuryHealth();
+  return Object.values(BATTLEFIELD_WEAPONS).map((w) => {
+    const q = quoteDynamicTax(w.cost, health);
+    return {
+      weaponId: w.id as BattlefieldWeaponId,
+      base: w.cost,
       final: q.final,
       tax: q.tax,
       multiplier: q.multiplier,
       zone: q.zone,
-    });
-  }
-  return out;
+    };
+  });
 }
 
 export async function buyBattlefieldWeapon(
   userId: number,
   weaponId: BattlefieldWeaponId,
-  payWith: PayToken = "wardog",
-): Promise<
-  | {
-      ok: true;
-      inventory: WeaponInv;
-      base: number;
-      cost: number;
-      tax: number;
-      multiplier: number;
-      zone: string;
-    }
-  | { ok: false; error: string }
-> {
-  await ensureBattlefieldSchema();
+  payWith: PayToken,
+): Promise<{ ok: true; qty: number } | { ok: false; error: string }> {
   const weapon = BATTLEFIELD_WEAPONS[weaponId];
   if (!weapon) return { ok: false, error: "invalid_weapon" };
-  if (payWith !== "wardog" && payWith !== "warcat") {
-    return { ok: false, error: "invalid_pay_token" };
-  }
 
-  const base = weapon.cost;
   const health = await getTreasuryHealth();
-  // applyDynamicTax returns FINAL price (base × multiplier)
-  const total = normalizeToken(await applyDynamicTax(base, payWith));
-  const tax = normalizeToken(Math.max(0, total - base));
-
+  const quote = quoteDynamicTax(weapon.cost, health);
   const spendable = await getSpendableBalances(userId);
-  const have =
-    payWith === "wardog"
-      ? spendable.spendableWardog
-      : spendable.spendableWarcat;
-  if (have < total - 1e-6) {
-    return { ok: false, error: "insufficient_spendable" };
+  const bal = payWith === "wardog" ? spendable.wardog : spendable.warcat;
+  if (bal < quote.final) return { ok: false, error: "insufficient_balance" };
+
+  const debited = await debitSpendable(userId, payWith as TopupToken, quote.final);
+  if (!debited) return { ok: false, error: "insufficient_balance" };
+
+  if (quote.tax > 0) {
+    await recordTreasuryDeposit({
+      userId,
+      token: payWith,
+      amount: quote.tax,
+      reason: `ops_weapon_${weaponId}`,
+    });
   }
 
-  const deb = await debitSpendable(userId, payWith as TopupToken, total);
-  if (!deb.ok) return { ok: false, error: "insufficient_spendable" };
-
-  await addInventory(userId, weaponId, 1);
-  const inv = await readInventory(userId);
-
-  await recordTreasuryDeposit({
-    userId,
-    source: `battlefield_buy:${weaponId}`,
-    wardog: payWith === "wardog" ? tax : 0,
-    warcat: payWith === "warcat" ? tax : 0,
-    baseAmount: base,
-    multiplier: health.taxMultiplier,
-    details: {
-      weaponId,
-      payWith,
-      total,
-      tax,
-      zone: health.zone,
-    },
-  });
-
-  await sql`
-    INSERT INTO shop_ledger (user_id, item_id, cost)
-    VALUES (${userId}, ${`battlefield:${weaponId}:${payWith}`}, ${total})
-  `;
-
-  return {
-    ok: true,
-    inventory: inv,
-    base,
-    cost: total,
-    tax,
-    multiplier: health.taxMultiplier,
-    zone: health.zone,
-  };
+  const qty = await addInventory(userId, weaponId, 1);
+  return { ok: true, qty };
 }
 
 export async function battlefieldStrike(
@@ -366,6 +335,9 @@ export async function battlefieldStrike(
       tokenReward: number;
       victimName: string | null;
       victimTelegramId: number;
+      jailed?: boolean;
+      jailUntil?: number;
+      message?: string;
     }
   | { ok: false; error: string }
 > {
@@ -389,10 +361,115 @@ export async function battlefieldStrike(
     return { ok: false, error: "cannot_attack_self" };
   }
 
+  const attackerLabel = (me.rows[0].username as string)
+    ? `@${me.rows[0].username}`
+    : (me.rows[0].first_name as string) || `tg:${myTg}`;
+
+  // ── Protected Nation Leader → JAIL the attacker ──────────────────────────
+  if (await isProtectedNationLeader(target.userId)) {
+    const invSnap = await getBattlefieldInventory(attackerId);
+    if (invSnap.attacksToday >= BATTLEFIELD_DAILY_ATTACK_CAP) {
+      return { ok: false, error: "daily_cap" };
+    }
+    if ((invSnap.weapons[weaponId] ?? 0) < 1) {
+      return { ok: false, error: "no_weapon" };
+    }
+    const readyAt = invSnap.cooldowns[weaponId] ?? 0;
+    if (readyAt > Date.now()) {
+      return { ok: false, error: "cooldown" };
+    }
+
+    const consumed = await consumeWeapon(attackerId, weaponId);
+    if (!consumed) return { ok: false, error: "no_weapon" };
+
+    // Deduct glory + tokens
+    const prog = await loadProgress(attackerId);
+    if (prog) {
+      const state = { ...(prog.state as any) };
+      state.glory = Math.max(
+        0,
+        Number(state.glory ?? prog.glory ?? 0) - OPS_PROTECTED_LEADER_GLORY_LOSS,
+      );
+      state.wardogTokens = Math.max(
+        0,
+        Number(prog.wardog_tokens ?? state.wardogTokens ?? 0) -
+          OPS_PROTECTED_LEADER_TOKEN_LOSS,
+      );
+      state.warcatTokens = Math.max(
+        0,
+        Number(prog.warcat_tokens ?? state.warcatTokens ?? 0) -
+          OPS_PROTECTED_LEADER_TOKEN_LOSS,
+      );
+      await writeProgress(attackerId, state, { touchSyncClock: false });
+    }
+
+    // Set 1-minute jail
+    const jailUntil = new Date(Date.now() + OPS_PROTECTED_LEADER_JAIL_MS);
+    await sql`
+      INSERT INTO ops_jail (user_id, jail_until, reason)
+      VALUES (${attackerId}, ${jailUntil.toISOString()}, 'attacked_protected_leader')
+      ON CONFLICT (user_id)
+      DO UPDATE SET jail_until = EXCLUDED.jail_until, reason = EXCLUDED.reason
+    `;
+
+    // Weapon cooldown still applies
+    const ready = new Date(Date.now() + weapon.cooldownSec * 1000);
+    await sql`
+      INSERT INTO ops_cooldowns (user_id, weapon_id, ready_at)
+      VALUES (${attackerId}, ${weaponId}, ${ready.toISOString()})
+      ON CONFLICT (user_id, weapon_id)
+      DO UPDATE SET ready_at = EXCLUDED.ready_at
+    `;
+
+    // History + global feed entry
+    await sql`
+      INSERT INTO ops_history (
+        attacker_id, victim_id, victim_telegram_id, weapon_id, hit,
+        glory_gained, token_reward, details
+      )
+      VALUES (
+        ${attackerId}, ${target.userId}, ${target.telegramId}, ${weaponId}, false,
+        ${-OPS_PROTECTED_LEADER_GLORY_LOSS}, ${-OPS_PROTECTED_LEADER_TOKEN_LOSS},
+        ${JSON.stringify({
+          victimName: target.displayName,
+          attackerName: attackerLabel,
+          jailed: true,
+          reason: "attacked_protected_leader",
+          gloryLost: OPS_PROTECTED_LEADER_GLORY_LOSS,
+          tokenLost: OPS_PROTECTED_LEADER_TOKEN_LOSS,
+          weaponName: weapon.name,
+        })}::jsonb
+      )
+    `;
+
+    // Notify the leader
+    await notifyUser(
+      target.userId,
+      target.telegramId,
+      "ops_jail_attempt",
+      `${attackerLabel} tried to attack you (protected Leader) with ${weapon.name} and got JAILED`,
+    );
+
+    return {
+      ok: true,
+      jailed: true,
+      hit: false,
+      gloryGained: -OPS_PROTECTED_LEADER_GLORY_LOSS,
+      tokenReward: -OPS_PROTECTED_LEADER_TOKEN_LOSS,
+      victimName: target.displayName,
+      victimTelegramId: target.telegramId,
+      jailUntil: jailUntil.getTime(),
+      message:
+        "You attacked an important World Leader, take your jail time and lose glory points and WARDOG / WARCAT",
+    };
+  }
+
+  // Normal protected members stay blocked
   if (await isNationProtected(target.userId)) {
     return { ok: false, error: "target_protected" };
   }
 
+  // ── Normal strike path ───────────────────────────────────────────────────
   const invSnap = await getBattlefieldInventory(attackerId);
   if (invSnap.attacksToday >= BATTLEFIELD_DAILY_ATTACK_CAP) {
     return { ok: false, error: "daily_cap" };
@@ -411,10 +488,6 @@ export async function battlefieldStrike(
   const hit = Math.random() < weapon.hitChance;
   let gloryGained = 0;
   let tokenReward = 0;
-
-  const attackerLabel = (me.rows[0].username as string)
-    ? `@${me.rows[0].username}`
-    : (me.rows[0].first_name as string) || `tg:${myTg}`;
 
   if (hit) {
     gloryGained = weapon.gloryOnHit;
@@ -540,13 +613,13 @@ export async function listOpsKillFeed(limit = 15): Promise<
     victimName: string;
     gloryGained: number;
     createdAt: number;
+    jailed?: boolean;
   }>
 > {
   await ensureBattlefieldSchema();
   const res = await sql`
     SELECT id, weapon_id, hit, glory_gained, created_at, details
     FROM ops_history
-    WHERE hit = TRUE
     ORDER BY created_at DESC
     LIMIT ${limit}
   `;
@@ -555,11 +628,12 @@ export async function listOpsKillFeed(limit = 15): Promise<
     return {
       id: Number(r.id),
       weaponId: String(r.weapon_id),
-      hit: true,
+      hit: Boolean(r.hit),
       attackerName: String(d.attackerName ?? "Unknown"),
       victimName: String(d.victimName ?? "Unknown"),
       gloryGained: Number(r.glory_gained ?? 0),
       createdAt: new Date(r.created_at as string).getTime(),
+      jailed: Boolean(d.jailed),
     };
   });
 }
@@ -578,5 +652,25 @@ export async function lookupTargetPreview(
     displayName: t.displayName,
     telegramId: t.telegramId,
     protected: protected_,
+  };
+}
+
+export async function getOpsJailStatus(userId: number): Promise<{
+  active: boolean;
+  remainingMs: number;
+  reason: string | null;
+}> {
+  await ensureBattlefieldSchema();
+  const res = await sql`
+    SELECT jail_until, reason FROM ops_jail WHERE user_id = ${userId} LIMIT 1
+  `;
+  const row = res.rows[0];
+  if (!row) return { active: false, remainingMs: 0, reason: null };
+  const until = new Date(row.jail_until as string).getTime();
+  const remainingMs = Math.max(0, until - Date.now());
+  return {
+    active: remainingMs > 0,
+    remainingMs,
+    reason: (row.reason as string) || null,
   };
 }

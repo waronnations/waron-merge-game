@@ -6,7 +6,9 @@ import { HybridModal } from "@/components/HybridModal";
 import { CocoonGenerateModal } from "@/components/CocoonGenerateModal";
 import { HybridResultModal } from "@/components/HybridResultModal";
 import { NukedLockModal } from "@/components/NukedLockModal";
+import { OpsJailModal } from "@/components/OpsJailModal";
 import { GlobalStrikeToast } from "@/components/GlobalStrikeToast";
+import { GlobalOpsEventToast } from "@/components/GlobalOpsEventToast";
 import type { useGame } from "@/lib/game-state";
 
 export function GameModals({
@@ -45,7 +47,9 @@ export function GameModals({
   return (
     <>
       <NukedLockModal />
+      <OpsJailModal />
       <GlobalStrikeToast />
+      <GlobalOpsEventToast />
 
       <DailyBonusModal
         open={showDaily}

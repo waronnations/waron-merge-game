@@ -40,7 +40,7 @@ export const BATTLEFIELD_WEAPONS: Record<BattlefieldWeaponId, BattlefieldWeapon>
     gloryDrainOnHit: 4,
     energyDrainOnHit: 5,
     cooldownSec: 90,
-    emoji: "🔪",
+    emoji: "Knife",
   },
   pistol: {
     id: "pistol",
@@ -53,7 +53,7 @@ export const BATTLEFIELD_WEAPONS: Record<BattlefieldWeaponId, BattlefieldWeapon>
     gloryDrainOnHit: 12,
     energyDrainOnHit: 10,
     cooldownSec: 180,
-    emoji: "🔫",
+    emoji: "Pistol",
   },
   rifle: {
     id: "rifle",
@@ -75,3 +75,8 @@ export const BATTLEFIELD_DAILY_ATTACK_CAP = 40;
 
 /** Cannot attack yourself */
 export const BATTLEFIELD_MIN_TARGET_TELEGRAM_ID = 1;
+
+/** Jail + penalties when attacking a protected Nation Leader */
+export const OPS_PROTECTED_LEADER_JAIL_MS = 60_000; // 1 minute
+export const OPS_PROTECTED_LEADER_GLORY_LOSS = 50;
+export const OPS_PROTECTED_LEADER_TOKEN_LOSS = 5; // each of wardog + warcat
