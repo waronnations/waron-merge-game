@@ -33,40 +33,40 @@ export const BATTLEFIELD_WEAPONS: Record<BattlefieldWeaponId, BattlefieldWeapon>
     id: "knife",
     name: "Combat Knife",
     desc: "Close range. Cheap. Moderate hit chance.",
-    cost: 1.5,
+    cost: 3,
     hitChance: 0.55,
     gloryOnHit: 8,
     tokenRewardOnHit: 0.15,
     gloryDrainOnHit: 4,
     energyDrainOnHit: 5,
     cooldownSec: 90,
-    emoji: "Knife",
+    emoji: "🔪",
   },
   pistol: {
     id: "pistol",
     name: "Sidearm",
     desc: "Reliable mid-range strike.",
-    cost: 4,
+    cost: 8,
     hitChance: 0.7,
     gloryOnHit: 20,
     tokenRewardOnHit: 0.4,
     gloryDrainOnHit: 12,
     energyDrainOnHit: 10,
     cooldownSec: 180,
-    emoji: "Pistol",
+    emoji: "🔫",
   },
   rifle: {
     id: "rifle",
     name: "Assault Rifle",
     desc: "High impact. Expensive. Strong rewards.",
-    cost: 12,
+    cost: 22,
     hitChance: 0.85,
     gloryOnHit: 55,
     tokenRewardOnHit: 1.2,
     gloryDrainOnHit: 30,
     energyDrainOnHit: 20,
     cooldownSec: 420,
-    emoji: "Rifle",
+    emoji: "🪖",
   },
 };
 
@@ -75,8 +75,3 @@ export const BATTLEFIELD_DAILY_ATTACK_CAP = 40;
 
 /** Cannot attack yourself */
 export const BATTLEFIELD_MIN_TARGET_TELEGRAM_ID = 1;
-
-/** Jail + penalties when attacking a protected Nation Leader */
-export const OPS_PROTECTED_LEADER_JAIL_MS = 60_000; // 1 minute
-export const OPS_PROTECTED_LEADER_GLORY_LOSS = 50;
-export const OPS_PROTECTED_LEADER_TOKEN_LOSS = 5; // each of wardog + warcat
