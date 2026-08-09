@@ -2,7 +2,8 @@
 /**
  * Energy pool, regen and recovery.
  * Merge board = energy only.
- * Paid energy (shop / recover) = topped-up spendable only.
+ * Board energy recover = unclaimed playable only.
+ * energyPack (shop) + other paid energy = topped-up spendable only.
  */
 
 export const MAX_ENERGY = 100;
@@ -19,7 +20,7 @@ export const MID_GAME_MERGES = 180;
 export const MID_GAME_REGEN_MULT = 1.35;
 
 export const RECOVER_ENERGY_AMOUNT = 50;
-/** Topped-up spendable only (server-enforced) */
+/** Unclaimed playable only (server-enforced in serverRecoverEnergy) */
 export const RECOVER_ENERGY_TOKEN_COST = 0.9;
 
 export type EnergyTreasuryZone = "green" | "yellow" | "red" | "critical";

@@ -12,6 +12,13 @@ function tokenLabel(payWith: PayToken): string {
 }
 
 function spendErrorToast(reason: string | undefined, payWith: PayToken) {
+  if (reason === "insufficient_playable") {
+    toast.error(
+      `Not enough unclaimed ${tokenLabel(payWith)} — earn more on the merge board`,
+      { duration: 2200 },
+    );
+    return;
+  }
   if (reason === "insufficient_spendable") {
     toast.error(
       `Not enough spendable ${tokenLabel(payWith)} — use Top up in Claim Center`,
@@ -21,12 +28,12 @@ function spendErrorToast(reason: string | undefined, payWith: PayToken) {
   }
   if (reason === "insufficient_tokens" || reason === "no_tokens") {
     toast.error(
-      `Not enough ${tokenLabel(payWith)} (spendable + claimable). Top up or earn more.`,
+      `Not enough ${tokenLabel(payWith)}. Earn on board or top up.`,
       { duration: 2000 },
     );
     return;
   }
-  if (reason === "energy_full") {
+  if (reason === "energy_full" || reason === "already_full") {
     toast.error("Energy is already full", { duration: 1400 });
     return;
   }
@@ -53,17 +60,19 @@ export function useEconomyHandlers({
   forceSync: () => Promise<unknown>;
 }) {
   /**
-   * Board energy recover.
-   * Server: healthy treasury → playable then spendable; strained → spendable only.
+   * Board energy recover — UNCLAIMED playable $WARDOG / $WARCAT only.
+   * Never touches top-up / spendable balances.
    */
   const handleRecoverEnergy = useCallback(
     (payWith: PayToken = "wardog") => {
-      // Skip optimistic local debit when authenticated — server owns spendable rules
+      // Skip optimistic local debit when authenticated — server owns the rules
       if (!authenticated) {
         const local = game.recoverEnergy?.(payWith) ?? game.recoverEnergy?.();
         if (local && typeof local === "object" && "ok" in local && !local.ok) {
           if ((local as { reason?: string }).reason === "no_tokens") {
-            toast.error(`Not enough ${tokenLabel(payWith)}`, { duration: 1400 });
+            toast.error(`Not enough unclaimed ${tokenLabel(payWith)}`, {
+              duration: 1400,
+            });
           }
           return;
         }
@@ -80,8 +89,9 @@ export function useEconomyHandlers({
           if (!res.ok) {
             if (
               res.reason === "energy_full" ||
+              res.reason === "already_full" ||
+              res.reason === "insufficient_playable" ||
               res.reason === "no_tokens" ||
-              res.reason === "insufficient_spendable" ||
               res.reason === "no_progress"
             ) {
               void pullFromServer();
@@ -108,7 +118,7 @@ export function useEconomyHandlers({
     [game, authenticated, pullFromServer, forceSync],
   );
 
-  /** Shop — server debits spendable first (see shop.server.ts). */
+  /** Shop (including energyPack) — always topped-up spendable only. */
   const handleShopBuy = async (
     itemId: keyof typeof SHOP_ITEMS,
     payWith: PayToken = "wardog",
@@ -143,10 +153,9 @@ export function useEconomyHandlers({
       }
 
       track("shop_purchase", { itemId, payWith });
-      toast.success(
-        `Purchased with ${tokenLabel(payWith)}`,
-        { duration: 1400 },
-      );
+      toast.success(`Purchased with ${tokenLabel(payWith)}`, {
+        duration: 1400,
+      });
       haptic("medium");
     } catch {
       toast.error("Purchase failed");

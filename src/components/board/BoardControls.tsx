@@ -83,7 +83,7 @@ export function BoardActionBar({
           type="button"
           disabled={!canRecoverWardog || !onRecover}
           onClick={() => onRecover?.("wardog")}
-          title={`Recharge · ${RECOVER_ENERGY_TOKEN_COST} $WARDOG`}
+          title={`Recharge energy · ${RECOVER_ENERGY_TOKEN_COST} unclaimed $WARDOG`}
           className={cn(
             "relative flex h-11 flex-1 items-center justify-center rounded-[10px] text-[11px] font-black uppercase tracking-wide transition-all active:scale-[0.98]",
             canRecoverWardog ? "text-white" : "text-zinc-600",
@@ -106,7 +106,7 @@ export function BoardActionBar({
           type="button"
           disabled={!canRecoverWarcat || !onRecover}
           onClick={() => onRecover?.("warcat")}
-          title={`Recharge · ${RECOVER_ENERGY_TOKEN_COST} $WARCAT`}
+          title={`Recharge energy · ${RECOVER_ENERGY_TOKEN_COST} unclaimed $WARCAT`}
           className={cn(
             "relative flex h-11 flex-1 items-center justify-center rounded-[10px] text-[11px] font-black uppercase tracking-wide transition-all active:scale-[0.98]",
             canRecoverWarcat ? "text-zinc-200" : "text-zinc-600",
@@ -134,7 +134,6 @@ export function BoardBrandFooter() {
   return (
     <div className="mb-1 mt-4 select-none px-1">
       <div className="relative overflow-hidden rounded-xl border border-zinc-800 bg-black px-3 py-3.5">
-        {/* subtle top highlight line */}
         <div
           className="pointer-events-none absolute inset-x-0 top-0 h-px"
           style={{
@@ -144,7 +143,6 @@ export function BoardBrandFooter() {
         />
 
         <div className="relative flex flex-col items-center gap-2">
-          {/* Main brand */}
           <div className="flex items-baseline justify-center gap-x-2 tracking-[0.32em]">
             <span className="text-[12px] font-black uppercase text-white drop-shadow-[0_0_10px_rgba(255,255,255,0.35)]">
               WAR
@@ -157,7 +155,6 @@ export function BoardBrandFooter() {
             </span>
           </div>
 
-          {/* Divider */}
           <div className="flex w-full max-w-[200px] items-center gap-2.5">
             <div className="h-px flex-1 bg-gradient-to-r from-transparent to-white/40" />
             <div className="h-1.5 w-1.5 rotate-45 bg-white shadow-[0_0_8px_rgba(255,255,255,0.7)]" />

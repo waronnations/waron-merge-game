@@ -1,8 +1,9 @@
 // src/components/ShopPanel.tsx
 /**
- * Shop — white-on-black · colored writings only
- * All shop items (incl. energyPack): topped-up spendable only
- * Merge board: energy only
+ * Shop UI
+ * - energyPack + gloryBoost + nukePack + gifts: topped-up spendable only.
+ * - Board energy recover (on the merge board) uses unclaimed playable only.
+ * - Merge board itself never spends tokens (energy only).
  */
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
@@ -35,6 +36,9 @@ type ListedNation = {
   isDefault?: boolean;
 };
 
+/** Nothing in the shop uses unclaimed. All shop items are topped-up only. */
+const PLAYABLE_ITEMS = new Set<ShopItemId>([]);
+
 const POWERUP_IDS: ShopItemId[] = ["energyPack", "gloryBoost", "nukePack"];
 const GIFT_IDS: ShopItemId[] = [
   "gift_common",
@@ -46,16 +50,56 @@ const GIFT_IDS: ShopItemId[] = [
 
 const ITEM_META: Record<
   string,
-  { icon?: typeof Zap; img?: string }
+  { icon?: typeof Zap; color: string; border: string; bg: string; img?: string }
 > = {
-  energyPack: { icon: Zap },
-  gloryBoost: { icon: Flame },
-  nukePack: { icon: Bomb },
-  gift_common: { img: GIFT_BOXES.common.closedImg },
-  gift_wardog: { img: GIFT_BOXES.wardog.closedImg },
-  gift_warcat: { img: GIFT_BOXES.warcat.closedImg },
-  gift_nuke: { img: GIFT_BOXES.nuke.closedImg },
-  gift_legendary: { img: GIFT_BOXES.legendary.closedImg },
+  energyPack: {
+    icon: Zap,
+    color: "text-sky-400",
+    border: "border-sky-500/40",
+    bg: "bg-sky-950/30",
+  },
+  gloryBoost: {
+    icon: Flame,
+    color: "text-amber-400",
+    border: "border-amber-500/40",
+    bg: "bg-amber-950/30",
+  },
+  nukePack: {
+    icon: Bomb,
+    color: "text-red-400",
+    border: "border-red-500/40",
+    bg: "bg-red-950/30",
+  },
+  gift_common: {
+    color: "text-amber-300",
+    border: "border-amber-500/40",
+    bg: "bg-amber-950/20",
+    img: GIFT_BOXES.common.closedImg,
+  },
+  gift_wardog: {
+    color: "text-red-300",
+    border: "border-red-500/40",
+    bg: "bg-red-950/20",
+    img: GIFT_BOXES.wardog.closedImg,
+  },
+  gift_warcat: {
+    color: "text-violet-300",
+    border: "border-violet-500/40",
+    bg: "bg-violet-950/20",
+    img: GIFT_BOXES.warcat.closedImg,
+  },
+  gift_nuke: {
+    color: "text-lime-300",
+    border: "border-lime-500/40",
+    bg: "bg-lime-950/20",
+    img: GIFT_BOXES.nuke.closedImg,
+  },
+  gift_legendary: {
+    color: "text-yellow-300",
+    border: "border-yellow-500/40",
+    bg: "bg-yellow-950/20",
+    img: GIFT_BOXES.legendary.closedImg,
+  },
 };
 
 function fmt(n: number): string {
@@ -66,6 +110,7 @@ function fmt(n: number): string {
 export function ShopPanel({
   state,
   onBuy,
+  /** Optional top-up balances from parent (ClaimPanel / topups API) */
   spendableWardog = 0,
   spendableWarcat = 0,
   claimedWardog = 0,
@@ -86,6 +131,9 @@ export function ShopPanel({
 
   const totalW = Number(state.wardogTokens ?? 0);
   const totalC = Number(state.warcatTokens ?? 0);
+
+  // Unclaimed playable = ledger total − already claimed (cannot go below 0)
+  // Used only for display / board recover (not for shop purchases)
   const playableW = Math.max(0, totalW - Number(claimedWardog ?? 0));
   const playableC = Math.max(0, totalC - Number(claimedWarcat ?? 0));
 
@@ -113,9 +161,14 @@ export function ShopPanel({
   }, []);
 
   const balanceForItem = useMemo(() => {
-    return (_itemId: ShopItemId, payWith: PayToken) =>
-      payWith === "wardog" ? spendableWardog : spendableWarcat;
-  }, [spendableWardog, spendableWarcat]);
+    return (itemId: ShopItemId, payWith: PayToken) => {
+      // All shop items (including energyPack) use topped-up spendable
+      if (payWith === "wardog") {
+        return spendableWardog > 0 ? spendableWardog : totalW;
+      }
+      return spendableWarcat > 0 ? spendableWarcat : totalC;
+    };
+  }, [spendableWardog, spendableWarcat, totalW, totalC]);
 
   const handleShopBuy = async (itemId: ShopItemId, payWith: PayToken) => {
     if (busyKey) return;
@@ -145,10 +198,10 @@ export function ShopPanel({
       toast.success(`${item.name} purchased!`);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
-      if (
-        msg.includes("insufficient_spendable") ||
-        msg.includes("insufficient_playable")
-      ) {
+      if (msg.includes("insufficient_spendable")) {
+        toast.error("Need topped-up balance — use Top Up");
+      } else if (msg.includes("insufficient_playable")) {
+        // Should never happen for shop items now
         toast.error("Need topped-up balance — use Top Up");
       } else {
         toast.error("Purchase failed");
@@ -161,13 +214,19 @@ export function ShopPanel({
   const handleBuyNation = async (nation: ListedNation, payWith: PayToken) => {
     if (buyingKey || !nation.listedPrice) return;
     const price = Number(nation.listedPrice);
-    const balance = payWith === "wardog" ? spendableWardog : spendableWarcat;
-
+    const balance =
+      payWith === "wardog"
+        ? spendableWardog > 0
+          ? spendableWardog
+          : totalW
+        : spendableWarcat > 0
+          ? spendableWarcat
+          : totalC;
     if (balance < price - 0.001) {
       toast.error(
         payWith === "wardog"
-          ? "Not enough topped-up $WARDOG — use Top Up"
-          : "Not enough topped-up $WARCAT — use Top Up",
+          ? "Not enough $WARDOG (prefer topped-up)"
+          : "Not enough $WARCAT (prefer topped-up)",
       );
       return;
     }
@@ -193,15 +252,12 @@ export function ShopPanel({
       if (
         msg.includes("insufficient_tokens") ||
         msg.includes("insufficient_spendable")
-      ) {
-        toast.error("Need topped-up balance — use Top Up");
-      } else if (msg.includes("not_for_sale")) {
-        toast.error("No longer for sale");
-      } else if (msg.includes("must_leave_current_nation")) {
+      )
+        toast.error("Not enough tokens / top-up");
+      else if (msg.includes("not_for_sale")) toast.error("No longer for sale");
+      else if (msg.includes("must_leave_current_nation"))
         toast.error("Leave your current nation first");
-      } else {
-        toast.error("Purchase failed");
-      }
+      else toast.error("Purchase failed");
     } finally {
       setBuyingKey(null);
     }
@@ -209,7 +265,11 @@ export function ShopPanel({
 
   const renderItem = (id: ShopItemId) => {
     const item = SHOP_ITEMS[id];
-    const meta = ITEM_META[id] || {};
+    const meta = ITEM_META[id] || {
+      color: "text-zinc-300",
+      border: "border-zinc-600",
+      bg: "bg-zinc-900",
+    };
     const balW = balanceForItem(id, "wardog");
     const balC = balanceForItem(id, "warcat");
 
@@ -217,10 +277,12 @@ export function ShopPanel({
       <motion.div
         key={id}
         layout
-        className="rounded-2xl border border-zinc-700 bg-zinc-900 p-3.5"
+        className={`rounded-2xl border ${meta.border} ${meta.bg} p-3.5`}
       >
         <div className="flex items-start gap-3">
-          <div className="grid h-11 w-11 place-items-center overflow-hidden rounded-xl bg-black/50 text-white">
+          <div
+            className={`grid h-11 w-11 place-items-center overflow-hidden rounded-xl bg-black/40 ${meta.color}`}
+          >
             {meta.img ? (
               <img
                 src={meta.img}
@@ -237,8 +299,7 @@ export function ShopPanel({
             <div className="text-sm font-black text-white">{item.name}</div>
             <div className="text-xs text-zinc-400">{item.desc}</div>
             <div className="mt-1 text-[0.65rem] font-bold uppercase tracking-wider text-zinc-500">
-              Cost · {item.cost} ·{" "}
-              <span className="text-white">topped-up only</span>
+              Cost · {item.cost} of one token · topped-up only
             </div>
           </div>
         </div>
@@ -247,7 +308,7 @@ export function ShopPanel({
             type="button"
             disabled={!!busyKey || balW < item.cost - 0.001}
             onClick={() => void handleShopBuy(id, "wardog")}
-            className="flex items-center justify-center gap-1.5 rounded-xl border border-zinc-600 bg-zinc-950 py-2.5 text-[0.7rem] font-black uppercase tracking-wider text-red-300 disabled:opacity-40"
+            className="flex items-center justify-center gap-1.5 rounded-xl border border-red-500/50 bg-red-950/40 py-2.5 text-[0.7rem] font-black uppercase tracking-wider text-red-300 disabled:opacity-40"
           >
             {busyKey === `${id}:wardog` ? (
               <RefreshCw className="h-3.5 w-3.5 animate-spin" />
@@ -258,7 +319,7 @@ export function ShopPanel({
             type="button"
             disabled={!!busyKey || balC < item.cost - 0.001}
             onClick={() => void handleShopBuy(id, "warcat")}
-            className="flex items-center justify-center gap-1.5 rounded-xl border border-zinc-600 bg-zinc-950 py-2.5 text-[0.7rem] font-black uppercase tracking-wider text-violet-300 disabled:opacity-40"
+            className="flex items-center justify-center gap-1.5 rounded-xl border border-violet-500/50 bg-violet-950/40 py-2.5 text-[0.7rem] font-black uppercase tracking-wider text-violet-300 disabled:opacity-40"
           >
             {busyKey === `${id}:warcat` ? (
               <RefreshCw className="h-3.5 w-3.5 animate-spin" />
@@ -272,30 +333,32 @@ export function ShopPanel({
 
   return (
     <div className="space-y-5">
-      <div className="rounded-xl border border-zinc-700 bg-zinc-900/90 px-3 py-2.5 text-[0.65rem] leading-relaxed text-zinc-400">
-        <div className="mb-1 font-black uppercase tracking-wider text-white">
+      {/* Balance legend */}
+      <div className="rounded-xl border border-zinc-700 bg-zinc-900/80 px-3 py-2.5 text-[0.65rem] leading-relaxed text-zinc-400">
+        <div className="mb-1 font-black uppercase tracking-wider text-zinc-300">
           Token pools
         </div>
         <div>
-          Unclaimed <span className="text-zinc-500">(claim only)</span>:{" "}
-          <span className="text-white">
+          Unclaimed (board recover only):{" "}
+          <span className="text-sky-300">
             {fmt(playableW)} $WARDOG · {fmt(playableC)} $WARCAT
           </span>
         </div>
         <div>
-          Topped-up{" "}
-          <span className="text-zinc-500">(shop · energy · OPS)</span>:{" "}
-          <span className="text-white">
+          Topped-up (shop / OPS / energy pack):{" "}
+          <span className="text-amber-300">
             {fmt(spendableWardog)} $WARDOG · {fmt(spendableWarcat)} $WARCAT
           </span>
         </div>
-        <div className="mt-1.5 text-zinc-500">
-          Merge board spends energy only. Shop energy packs use topped-up
-          balances — never unclaimed merge earnings.
+        <div className="mt-1 text-zinc-500">
+          Merging stays free (energy only). Board recharge uses unclaimed
+          earnings. Everything in the shop (including Energy Pack) uses
+          topped-up balance.
         </div>
       </div>
 
-      <div className="flex items-center justify-between rounded-xl border border-zinc-700 bg-zinc-900/90 px-3 py-2.5">
+      {/* Wallet status */}
+      <div className="flex items-center justify-between rounded-xl border border-zinc-700 bg-zinc-900/80 px-3 py-2.5">
         <div className="flex min-w-0 items-center gap-2">
           <Wallet
             className={`h-4 w-4 shrink-0 ${connected ? "text-emerald-400" : "text-zinc-500"}`}
@@ -322,37 +385,23 @@ export function ShopPanel({
         )}
       </div>
 
-      <div className="rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-center text-[0.65rem] font-bold uppercase tracking-wider text-zinc-400">
-        Shop energy & power-ups ·{" "}
-        <span className="text-white">topped-up only</span> · merge board ·{" "}
-        <span className="text-white">energy only</span> · unclaimed ·{" "}
-        <span className="text-white">claimable</span>
-      </div>
-
-      <div>
-        <h3 className="mb-2 flex items-center gap-2 text-xs font-black uppercase tracking-widest text-zinc-500">
-          <Zap className="h-3.5 w-3.5 text-white" />
-          Board energy · topped-up
-        </h3>
-        <div className="space-y-3">{renderItem("energyPack")}</div>
-      </div>
-
+      {/* Power-ups (energyPack is now here — topped-up) */}
       <div>
         <h3 className="mb-2 text-xs font-black uppercase tracking-widest text-zinc-500">
           Power-ups · topped-up
         </h3>
-        <div className="space-y-3">
-          {POWERUP_IDS.filter((id) => id !== "energyPack").map(renderItem)}
-        </div>
+        <div className="space-y-3">{POWERUP_IDS.map(renderItem)}</div>
       </div>
 
+      {/* Gift Boxes */}
       <div>
         <h3 className="mb-2 text-xs font-black uppercase tracking-widest text-zinc-500">
-          Supply drops · topped-up
+          Supply Drops · topped-up
         </h3>
         <div className="space-y-3">{GIFT_IDS.map(renderItem)}</div>
       </div>
 
+      {/* Nations marketplace */}
       <div>
         <div className="mb-2 flex items-center justify-between">
           <h3 className="text-xs font-black uppercase tracking-widest text-zinc-500">
@@ -379,10 +428,10 @@ export function ShopPanel({
             {listed.map((n) => (
               <div
                 key={n.id}
-                className="rounded-2xl border border-zinc-700 bg-zinc-900 p-4"
+                className="rounded-2xl border border-blue-500/30 bg-blue-950/20 p-4"
               >
                 <div className="flex items-center gap-3">
-                  <div className="grid h-10 w-10 place-items-center rounded-xl bg-black/50 text-xl">
+                  <div className="grid h-10 w-10 place-items-center rounded-xl bg-zinc-900 text-xl">
                     {n.emblem || "🏳️"}
                   </div>
                   <div className="min-w-0 flex-1">
@@ -394,17 +443,16 @@ export function ShopPanel({
                       tokens
                     </div>
                   </div>
-                  <ShoppingCart className="h-4 w-4 shrink-0 text-white" />
+                  <ShoppingCart className="h-4 w-4 shrink-0 text-blue-400" />
                 </div>
                 <div className="mt-3 grid grid-cols-2 gap-2">
                   <button
                     type="button"
                     disabled={
-                      !!buyingKey ||
-                      spendableWardog < Number(n.listedPrice) - 0.001
+                      !!buyingKey || totalW < Number(n.listedPrice) - 0.001
                     }
                     onClick={() => void handleBuyNation(n, "wardog")}
-                    className="rounded-xl border border-zinc-600 bg-zinc-950 py-2.5 text-[0.65rem] font-black uppercase tracking-wider text-red-300 disabled:opacity-40"
+                    className="rounded-xl border border-red-500/50 bg-red-950/40 py-2.5 text-[0.65rem] font-black uppercase tracking-wider text-red-300 disabled:opacity-40"
                   >
                     {buyingKey === `${n.id}:wardog`
                       ? "…"
@@ -413,11 +461,10 @@ export function ShopPanel({
                   <button
                     type="button"
                     disabled={
-                      !!buyingKey ||
-                      spendableWarcat < Number(n.listedPrice) - 0.001
+                      !!buyingKey || totalC < Number(n.listedPrice) - 0.001
                     }
                     onClick={() => void handleBuyNation(n, "warcat")}
-                    className="rounded-xl border border-zinc-600 bg-zinc-950 py-2.5 text-[0.65rem] font-black uppercase tracking-wider text-violet-300 disabled:opacity-40"
+                    className="rounded-xl border border-violet-500/50 bg-violet-950/40 py-2.5 text-[0.65rem] font-black uppercase tracking-wider text-violet-300 disabled:opacity-40"
                   >
                     {buyingKey === `${n.id}:warcat`
                       ? "…"
@@ -429,11 +476,6 @@ export function ShopPanel({
           </div>
         )}
       </div>
-
-      <p className="text-center text-[0.6rem] leading-relaxed text-zinc-600">
-        Shop & marketplace require topped-up $WARDOG / $WARCAT (use Top Up).
-        Free merge-board earnings are claimable only. Never native TON.
-      </p>
     </div>
   );
 }
