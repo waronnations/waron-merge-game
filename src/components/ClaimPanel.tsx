@@ -25,10 +25,6 @@ import { ClaimAmountControls } from "@/components/claim/ClaimAmountControls";
 import { ClaimBalanceTiles } from "@/components/claim/ClaimBalanceTiles";
 import { ClaimHistoryList } from "@/components/claim/ClaimHistoryList";
 
-/**
- * Payload written for parent BASE / HUD sync.
- * Parent should set claimable balances from this (not top-up spendable).
- */
 export type ClaimBalanceSyncPayload = {
   wardogTokens: number;
   warcatTokens: number;
@@ -43,7 +39,6 @@ export function ClaimPanel({
 }: {
   state: GameState;
   authenticated: boolean;
-  /** Called after a successful claim lock / TX so BASE matches claimable. */
   onBalanceSync?: (payload: ClaimBalanceSyncPayload) => void;
 }) {
   const wallet = useTonWallet();
@@ -58,7 +53,6 @@ export function ClaimPanel({
   const pushBalanceSync = (snap: ClaimsSnapshot) => {
     if (!onBalanceSync) return;
     onBalanceSync({
-      // Claimable vault = total − claimed (not top-up spendable)
       wardogTokens: snap.balances.wardog,
       warcatTokens: snap.balances.warcat,
       claimedWardog: snap.claimed.wardog,
@@ -102,10 +96,7 @@ export function ClaimPanel({
       return { ok: false as const, error: "Enter a claim amount" };
     }
     if (n < minAmount) {
-      return {
-        ok: false as const,
-        error: `Minimum claim is ${minAmount}`,
-      };
+      return { ok: false as const, error: `Minimum claim is ${minAmount}` };
     }
     if (n > available + 1e-9) {
       return {
@@ -262,7 +253,6 @@ export function ClaimPanel({
 
       <TreasuryCard />
 
-      {/* Hard rule explanation */}
       <div className="rounded-xl border border-emerald-500/25 bg-emerald-950/20 px-3 py-2.5 text-[0.65rem] leading-relaxed text-emerald-100/90">
         <p className="font-black uppercase tracking-wider text-emerald-300">
           Two balances
@@ -332,7 +322,6 @@ export function ClaimPanel({
         )}
       </div>
 
-      {/* Improved tiles – now show Claimable / Claimed / Total */}
       <ClaimBalanceTiles
         balances={balances}
         claimed={claimed}

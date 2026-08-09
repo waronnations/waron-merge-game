@@ -9,7 +9,6 @@ import {
   ShieldAlert,
   RefreshCw,
   Wallet,
-  Coins,
 } from "lucide-react";
 import type { GameState } from "@/lib/game-state";
 import type { SessionUser } from "@/hooks/use-telegram-session";
@@ -38,7 +37,7 @@ export function ProfilePanel({
   const rank = getRankForGlory(state.glory);
   const [redeeming, setRedeeming] = useState<string | null>(null);
 
-  // Authoritative claimable numbers (same source as Earn → Claim)
+  // Authoritative claimable (same source as Earn → Claim)
   const [claimable, setClaimable] = useState({
     wardog: Number(state.wardogTokens ?? 0),
     warcat: Number(state.warcatTokens ?? 0),
@@ -54,6 +53,7 @@ export function ProfilePanel({
     (state as any).isTraitor ?? (user as any)?.isTraitor,
   );
 
+  // Display these (authoritative)
   const wardog = claimable.wardog;
   const warcat = claimable.warcat;
 
@@ -77,7 +77,7 @@ export function ProfilePanel({
         });
       }
     } catch {
-      // keep previous / local values
+      // keep previous values
     } finally {
       setLoadingBalances(false);
     }
@@ -283,7 +283,7 @@ export function ProfilePanel({
         </div>
       </div>
 
-      {/* Token Vault – now shows authoritative claimable */}
+      {/* Token Vault – now always shows live claimable (matches Earn) */}
       <div className="rounded-2xl border border-zinc-700 bg-zinc-900 p-4">
         <div className="mb-3 flex items-center justify-between">
           <h3 className="text-xs font-black uppercase tracking-widest text-zinc-500">
@@ -323,8 +323,8 @@ export function ProfilePanel({
           <strong className="text-emerald-300">Claimable</strong> = merge
           rewards you can still claim in Earn → Claim.
           <br />
-          These numbers come from the same server source as the Claim Center so
-          they always match.
+          These numbers come from the exact same server source as the Claim
+          Center, so Earn and Base always match.
         </div>
       </div>
 
