@@ -279,49 +279,105 @@ export async function getBattlefieldInventory(userId: number): Promise<{
   return { weapons: inv, cooldowns, attacksToday };
 }
 
-export async function getBattlefieldArmoryQuotes() {
-  const health = await getTreasuryHealth();
-  return Object.values(BATTLEFIELD_WEAPONS).map((w) => {
-    const q = quoteDynamicTax(w.cost, health);
-    return {
-      weaponId: w.id as BattlefieldWeaponId,
-      base: w.cost,
+export async function getBattlefieldArmoryQuotes(): Promise<
+  Array<{
+    weaponId: BattlefieldWeaponId;
+    base: number;
+    final: number;
+    tax: number;
+    multiplier: number;
+    zone: string;
+  }>
+> {
+  const out = [];
+  for (const w of Object.values(BATTLEFIELD_WEAPONS)) {
+    const q = await quoteDynamicTax(w.cost);
+    out.push({
+      weaponId: w.id,
+      base: q.base,
       final: q.final,
       tax: q.tax,
       multiplier: q.multiplier,
       zone: q.zone,
-    };
-  });
+    });
+  }
+  return out;
 }
 
 export async function buyBattlefieldWeapon(
   userId: number,
   weaponId: BattlefieldWeaponId,
-  payWith: PayToken,
-): Promise<{ ok: true; qty: number } | { ok: false; error: string }> {
+  payWith: PayToken = "wardog",
+): Promise<
+  | {
+      ok: true;
+      inventory: WeaponInv;
+      base: number;
+      cost: number;
+      tax: number;
+      multiplier: number;
+      zone: string;
+    }
+  | { ok: false; error: string }
+> {
+  await ensureBattlefieldSchema();
   const weapon = BATTLEFIELD_WEAPONS[weaponId];
   if (!weapon) return { ok: false, error: "invalid_weapon" };
-
-  const health = await getTreasuryHealth();
-  const quote = quoteDynamicTax(weapon.cost, health);
-  const spendable = await getSpendableBalances(userId);
-  const bal = payWith === "wardog" ? spendable.wardog : spendable.warcat;
-  if (bal < quote.final) return { ok: false, error: "insufficient_balance" };
-
-  const debited = await debitSpendable(userId, payWith as TopupToken, quote.final);
-  if (!debited) return { ok: false, error: "insufficient_balance" };
-
-  if (quote.tax > 0) {
-    await recordTreasuryDeposit({
-      userId,
-      token: payWith,
-      amount: quote.tax,
-      reason: `ops_weapon_${weaponId}`,
-    });
+  if (payWith !== "wardog" && payWith !== "warcat") {
+    return { ok: false, error: "invalid_pay_token" };
   }
 
-  const qty = await addInventory(userId, weaponId, 1);
-  return { ok: true, qty };
+  const base = weapon.cost;
+  if (!(base > 0)) return { ok: false, error: "invalid_weapon_cost" };
+
+  const health = await getTreasuryHealth();
+  const total = normalizeToken(await applyDynamicTax(base, payWith));
+  const tax = normalizeToken(Math.max(0, total - base));
+  if (!(total > 0)) return { ok: false, error: "invalid_amount" };
+
+  const spendable = await getSpendableBalances(userId);
+  const have =
+    payWith === "wardog"
+      ? spendable.spendableWardog
+      : spendable.spendableWarcat;
+
+  if (have < total - 1e-6) {
+    return { ok: false, error: "insufficient_spendable" };
+  }
+
+  const deb = await debitSpendable(userId, payWith as TopupToken, total);
+  if (!deb.ok) {
+    return { ok: false, error: "insufficient_spendable" };
+  }
+
+  await addInventory(userId, weaponId, 1);
+  const inv = await readInventory(userId);
+
+  await recordTreasuryDeposit({
+    userId,
+    source: `battlefield_buy:${weaponId}`,
+    wardog: payWith === "wardog" ? tax : 0,
+    warcat: payWith === "warcat" ? tax : 0,
+    baseAmount: base,
+    multiplier: health.taxMultiplier,
+    details: {
+      weaponId,
+      payWith,
+      total,
+      tax,
+      zone: health.zone,
+    },
+  });
+
+  return {
+    ok: true,
+    inventory: inv,
+    base,
+    cost: total,
+    tax,
+    multiplier: health.taxMultiplier,
+    zone: health.zone,
+  };
 }
 
 export async function battlefieldStrike(
@@ -383,7 +439,6 @@ export async function battlefieldStrike(
     const consumed = await consumeWeapon(attackerId, weaponId);
     if (!consumed) return { ok: false, error: "no_weapon" };
 
-    // Deduct glory + tokens
     const prog = await loadProgress(attackerId);
     if (prog) {
       const state = { ...(prog.state as any) };
@@ -404,7 +459,6 @@ export async function battlefieldStrike(
       await writeProgress(attackerId, state, { touchSyncClock: false });
     }
 
-    // Set 1-minute jail
     const jailUntil = new Date(Date.now() + OPS_PROTECTED_LEADER_JAIL_MS);
     await sql`
       INSERT INTO ops_jail (user_id, jail_until, reason)
@@ -413,7 +467,6 @@ export async function battlefieldStrike(
         SET jail_until = EXCLUDED.jail_until, reason = EXCLUDED.reason
     `;
 
-    // Log the failed attempt
     await sql`
       INSERT INTO ops_history (
         attacker_id, victim_id, victim_telegram_id, weapon_id,
@@ -421,33 +474,50 @@ export async function battlefieldStrike(
       )
       VALUES (
         ${attackerId}, ${target.userId}, ${target.telegramId}, ${weaponId},
-        FALSE, 0, 0,
-        ${JSON.stringify({ jailed: true, reason: "protected_leader" })}::jsonb
+        FALSE, ${-OPS_PROTECTED_LEADER_GLORY_LOSS}, ${-OPS_PROTECTED_LEADER_TOKEN_LOSS},
+        ${JSON.stringify({
+          jailed: true,
+          reason: "protected_leader",
+          attackerName: attackerLabel,
+          victimName: target.displayName,
+          weaponName: weapon.name,
+        })}::jsonb
       )
     `;
 
-    // Public group announcement for the failed hit + jail
+    await notifyUser(
+      target.userId,
+      target.telegramId,
+      "ops_jail_attempt",
+      `${attackerLabel} tried to attack you (protected Leader) with ${weapon.name} and got JAILED`,
+    );
+
+    // Group announcement
     announceToGroup(
       `🚔 <b>PROTECTED LEADER STRIKE FAILED</b>\n\n` +
         `${attackerLabel} tried to hit protected leader ${target.displayName}\n` +
         `→ JAILED for 1 minute + glory & token loss\n` +
-        `Weapon: ${weapon.name || weaponId}`,
+        `Weapon: ${weapon.name}`,
     );
 
     return {
       ok: true,
+      jailed: true,
       hit: false,
-      gloryGained: 0,
-      tokenReward: 0,
+      gloryGained: -OPS_PROTECTED_LEADER_GLORY_LOSS,
+      tokenReward: -OPS_PROTECTED_LEADER_TOKEN_LOSS,
       victimName: target.displayName,
       victimTelegramId: target.telegramId,
-      jailed: true,
       jailUntil: jailUntil.getTime(),
-      message: "Attacked protected leader — you are jailed",
+      message:
+        "You attacked an important World Leader, take your jail time and lose glory points and WARDOG / WARCAT",
     };
   }
 
-  // ── Normal attack path ───────────────────────────────────────────────────
+  if (await isNationProtected(target.userId)) {
+    return { ok: false, error: "target_protected" };
+  }
+
   const invSnap = await getBattlefieldInventory(attackerId);
   if (invSnap.attacksToday >= BATTLEFIELD_DAILY_ATTACK_CAP) {
     return { ok: false, error: "daily_cap" };
@@ -463,81 +533,91 @@ export async function battlefieldStrike(
   const consumed = await consumeWeapon(attackerId, weaponId);
   if (!consumed) return { ok: false, error: "no_weapon" };
 
-  // Cooldown
-  const cdMs = (weapon as any).cooldownMs ?? 30_000;
-  await sql`
-    INSERT INTO ops_cooldowns (user_id, weapon_id, ready_at)
-    VALUES (${attackerId}, ${weaponId}, ${new Date(Date.now() + cdMs).toISOString()})
-    ON CONFLICT (user_id, weapon_id)
-    DO UPDATE SET ready_at = EXCLUDED.ready_at
-  `;
-
-  // Hit chance
-  const hitChance = (weapon as any).hitChance ?? 0.65;
-  const hit = Math.random() < hitChance;
-
+  const hit = Math.random() < weapon.hitChance;
   let gloryGained = 0;
   let tokenReward = 0;
 
   if (hit) {
-    gloryGained = Math.floor((weapon as any).glory ?? 40);
-    tokenReward = Number(((weapon as any).tokenReward ?? 0.5).toFixed(3));
+    gloryGained = weapon.gloryOnHit;
+    tokenReward = weapon.tokenRewardOnHit;
 
-    // Reward attacker
     const prog = await loadProgress(attackerId);
     if (prog) {
       const state = { ...(prog.state as any) };
       state.glory = Number(state.glory ?? prog.glory ?? 0) + gloryGained;
-      state.wardogTokens = addTokens(
-        Number(prog.wardog_tokens ?? state.wardogTokens ?? 0),
-        tokenReward / 2,
-      );
-      state.warcatTokens = addTokens(
-        Number(prog.warcat_tokens ?? state.warcatTokens ?? 0),
-        tokenReward / 2,
-      );
-      await writeProgress(attackerId, state, {
-        touchSyncClock: false,
-        gloryDelta: gloryGained,
-      });
+      const half = normalizeToken(tokenReward / 2);
+      state.wardogTokens = addTokens(Number(prog.wardog_tokens ?? 0), half);
+      state.warcatTokens = addTokens(Number(prog.warcat_tokens ?? 0), half);
+      await writeProgress(attackerId, state, { touchSyncClock: false });
     }
 
-    // Notify victim (DM)
+    const vProg = await loadProgress(target.userId);
+    if (vProg) {
+      const vs = { ...(vProg.state as any) };
+      vs.glory = Math.max(
+        0,
+        Number(vs.glory ?? vProg.glory ?? 0) - weapon.gloryDrainOnHit,
+      );
+      vs.energy = Math.max(
+        0,
+        Number(vs.energy ?? 0) - weapon.energyDrainOnHit,
+      );
+      await writeProgress(target.userId, vs, { touchSyncClock: false });
+    }
+
     await notifyUser(
       target.userId,
       target.telegramId,
       "ops_hit",
-      `⚔️ You were hit by ${attackerLabel} with ${weapon.name || weaponId} in War On Nations!\n` +
-        `Open the app to strike back.`,
+      `${attackerLabel} hit you with ${weapon.name} (−${weapon.gloryDrainOnHit} glory, −${weapon.energyDrainOnHit} energy)`,
+    );
+  } else {
+    await notifyUser(
+      target.userId,
+      target.telegramId,
+      "ops_miss",
+      `${attackerLabel} missed you with ${weapon.name}`,
     );
   }
 
-  // History
+  const ready = new Date(Date.now() + weapon.cooldownSec * 1000);
+  await sql`
+    INSERT INTO ops_cooldowns (user_id, weapon_id, ready_at)
+    VALUES (${attackerId}, ${weaponId}, ${ready.toISOString()})
+    ON CONFLICT (user_id, weapon_id)
+    DO UPDATE SET ready_at = EXCLUDED.ready_at
+  `;
+
   await sql`
     INSERT INTO ops_history (
-      attacker_id, victim_id, victim_telegram_id, weapon_id,
-      hit, glory_gained, token_reward, details
+      attacker_id, victim_id, victim_telegram_id, weapon_id, hit,
+      glory_gained, token_reward, details
     )
     VALUES (
-      ${attackerId}, ${target.userId}, ${target.telegramId}, ${weaponId},
-      ${hit}, ${gloryGained}, ${tokenReward},
-      ${JSON.stringify({ weaponName: (weapon as any).name || weaponId })}::jsonb
+      ${attackerId}, ${target.userId}, ${target.telegramId}, ${weaponId}, ${hit},
+      ${gloryGained}, ${tokenReward},
+      ${JSON.stringify({
+        victimName: target.displayName,
+        attackerName: attackerLabel,
+        hitChance: weapon.hitChance,
+        weaponName: weapon.name,
+      })}::jsonb
     )
   `;
 
-  // ── Public group announcement ─────────────────────────────────────
+  // Group announcement
   if (hit) {
     announceToGroup(
       `⚔️ <b>OPS STRIKE CONFIRMED</b>\n\n` +
         `${attackerLabel} hit ${target.displayName}\n` +
-        `Weapon: ${ (weapon as any).name || weaponId }\n` +
+        `Weapon: ${weapon.name}\n` +
         `⭐ +${gloryGained} Glory · +${tokenReward} tokens\n` +
         `\nThe pack is hungry. Feed it 🔥`,
     );
   } else {
     announceToGroup(
       `💨 <b>OPS MISS</b>\n\n` +
-        `${attackerLabel} missed ${target.displayName} with ${ (weapon as any).name || weaponId }`,
+        `${attackerLabel} missed ${target.displayName} with ${weapon.name}`,
     );
   }
 
@@ -551,69 +631,110 @@ export async function battlefieldStrike(
   };
 }
 
-// ── Remaining helpers (list history, kill feed, jail status, etc.) ─────────
-
-export async function listOpsHistory(userId: number, limit = 30) {
+export async function listOpsHistory(
+  userId: number,
+  limit = 30,
+): Promise<
+  Array<{
+    id: number;
+    weaponId: string;
+    hit: boolean;
+    victimTelegramId: number | null;
+    gloryGained: number;
+    tokenReward: number;
+    createdAt: number;
+    details: Record<string, unknown>;
+  }>
+> {
   await ensureBattlefieldSchema();
   const res = await sql`
-    SELECT h.*, u.username AS victim_username, u.first_name AS victim_first_name
-    FROM ops_history h
-    LEFT JOIN users u ON u.id = h.victim_id
-    WHERE h.attacker_id = ${userId}
-    ORDER BY h.created_at DESC
+    SELECT id, weapon_id, hit, victim_telegram_id, glory_gained, token_reward,
+           created_at, details
+    FROM ops_history
+    WHERE attacker_id = ${userId}
+    ORDER BY created_at DESC
     LIMIT ${limit}
   `;
   return res.rows.map((r) => ({
     id: Number(r.id),
     weaponId: String(r.weapon_id),
     hit: Boolean(r.hit),
-    gloryGained: Number(r.glory_gained),
-    tokenReward: Number(r.token_reward),
-    victimName: r.victim_username
-      ? `@${r.victim_username}`
-      : (r.victim_first_name as string) || null,
+    victimTelegramId:
+      r.victim_telegram_id != null ? Number(r.victim_telegram_id) : null,
+    gloryGained: Number(r.glory_gained ?? 0),
+    tokenReward: Number(r.token_reward ?? 0),
     createdAt: new Date(r.created_at as string).getTime(),
+    details: (r.details as Record<string, unknown>) ?? {},
   }));
 }
 
-export async function listOpsKillFeed(limit = 40) {
+export async function listOpsKillFeed(limit = 15): Promise<
+  Array<{
+    id: number;
+    weaponId: string;
+    hit: boolean;
+    attackerName: string;
+    victimName: string;
+    gloryGained: number;
+    createdAt: number;
+    jailed?: boolean;
+  }>
+> {
   await ensureBattlefieldSchema();
   const res = await sql`
-    SELECT h.*, 
-           a.username AS attacker_username, a.first_name AS attacker_first_name,
-           v.username AS victim_username, v.first_name AS victim_first_name
-    FROM ops_history h
-    LEFT JOIN users a ON a.id = h.attacker_id
-    LEFT JOIN users v ON v.id = h.victim_id
-    WHERE h.hit = TRUE
-    ORDER BY h.created_at DESC
+    SELECT id, weapon_id, hit, glory_gained, created_at, details
+    FROM ops_history
+    ORDER BY created_at DESC
     LIMIT ${limit}
   `;
-  return res.rows.map((r) => ({
-    id: Number(r.id),
-    attacker: r.attacker_username
-      ? `@${r.attacker_username}`
-      : (r.attacker_first_name as string) || `#${r.attacker_id}`,
-    victim: r.victim_username
-      ? `@${r.victim_username}`
-      : (r.victim_first_name as string) || `#${r.victim_id}`,
-    weaponId: String(r.weapon_id),
-    gloryGained: Number(r.glory_gained),
-    createdAt: new Date(r.created_at as string).getTime(),
-  }));
+  return res.rows.map((r) => {
+    const d = (r.details as Record<string, unknown>) ?? {};
+    return {
+      id: Number(r.id),
+      weaponId: String(r.weapon_id),
+      hit: Boolean(r.hit),
+      attackerName: String(d.attackerName ?? "Unknown"),
+      victimName: String(d.victimName ?? "Unknown"),
+      gloryGained: Number(r.glory_gained ?? 0),
+      createdAt: new Date(r.created_at as string).getTime(),
+      jailed: Boolean(d.jailed),
+    };
+  });
 }
 
-export async function getOpsJailStatus(userId: number) {
+export async function lookupTargetPreview(
+  query: string,
+): Promise<
+  | { ok: true; displayName: string; telegramId: number; protected: boolean }
+  | { ok: false; error: string }
+> {
+  const t = await resolveBattlefieldTarget(query);
+  if (!t.ok) return t;
+  const protected_ = await isNationProtected(t.userId);
+  return {
+    ok: true,
+    displayName: t.displayName,
+    telegramId: t.telegramId,
+    protected: protected_,
+  };
+}
+
+export async function getOpsJailStatus(userId: number): Promise<{
+  active: boolean;
+  remainingMs: number;
+  reason: string | null;
+}> {
   await ensureBattlefieldSchema();
   const res = await sql`
-    SELECT jail_until, reason FROM ops_jail
-    WHERE user_id = ${userId} AND jail_until > NOW()
-    LIMIT 1
+    SELECT jail_until, reason FROM ops_jail WHERE user_id = ${userId} LIMIT 1
   `;
-  if (!res.rows[0]) return { jailed: false as const };
+  const row = res.rows[0];
+  if (!row) return { active: false, remainingMs: 0, reason: null };
+  const until = new Date(row.jail_until as string).getTime();
+  const remainingMs = Math.max(0, until - Date.now());
   return {
-    jailed: true as const,
-    jailUntil: new Date(res.rows[0].jail_until as string).getTime(),
-    reason: String(res.rows[0].reason),
+    active: remainingMs > 0,
+    remainingMs,
+    reason: (row.reason as string) || null,
   };
 }
