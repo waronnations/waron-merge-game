@@ -5,9 +5,9 @@ import type { GameState } from "./types";
 import {
   clampEnergy,
   isCorrectSide,
-  randomFaction,
   bumpDailyQuest,
   pickSmartVariant,
+  updateConquerFlags,
 } from "./helpers";
 
 export type SpawnOutcome =
@@ -37,11 +37,27 @@ export function computeSpawn(s: GameState): SpawnOutcome {
     return { ok: false, reason: "Board completely full" };
   }
 
-  const preferred: Faction = randomFaction();
+  // Prefer the side already closer to conquest
+  let dogHybridCount = 0;
+  let catHybridCount = 0;
+  for (let i = 0; i < s.board.length; i++) {
+    const cell = s.board[i];
+    if (!cell || cell.faction !== "hybrid") continue;
+    if (isCorrectSide(i, "dog")) dogHybridCount++;
+    else catHybridCount++;
+  }
+
+  const preferDog =
+    dogHybridCount > catHybridCount
+      ? Math.random() < 0.72
+      : catHybridCount > dogHybridCount
+        ? Math.random() < 0.28
+        : Math.random() < 0.5;
+
   let finalFaction: Faction;
   let pool: number[];
 
-  if (preferred === "dog") {
+  if (preferDog) {
     if (dogEmpty.length > 0) {
       pool = dogEmpty;
       finalFaction = "dog";
@@ -85,6 +101,7 @@ export function computeSpawn(s: GameState): SpawnOutcome {
     lastSeenAt: Date.now(),
   };
   next = bumpDailyQuest(next, "spawn", 1);
+  next = updateConquerFlags(next); // ← Conquest Event check after spawn
 
   return {
     ok: true,

@@ -15,7 +15,7 @@ import {
   clampServerEnergy,
   isCorrectSide,
 } from "./state.server";
-import { pickSmartVariant } from "../helpers";
+import { pickSmartVariant, updateConquerFlags } from "../helpers";
 
 /** Returns true if the user's nation was hit less than NUKE_HIT_DISABLE_MS ago */
 async function isNationNukedLocked(userId: number): Promise<boolean> {
@@ -36,6 +36,11 @@ async function isNationNukedLocked(userId: number): Promise<boolean> {
  * Same-side only + optional client placement.
  * If client sends targetIdx/faction and the cell is not free on the server,
  * return stale_placement (do NOT silent-remap — that causes unit "replacements").
+ *
+ * Includes:
+ * - Smart variant selection (frequency-aware)
+ * - Preference for the side closer to conquest
+ * - Conquest Event flag update after spawn
  */
 export async function serverCommitSpawn(
   userId: number,
@@ -83,6 +88,7 @@ export async function serverCommitSpawn(
     (opts.faction === "dog" || opts.faction === "cat");
 
   if (clientWantsPlacement) {
+    // Client already placed optimistically — must match server board or fail.
     if (
       board[opts!.targetIdx!] !== null ||
       !isCorrectSide(opts!.targetIdx!, opts!.faction!)
@@ -92,12 +98,40 @@ export async function serverCommitSpawn(
     target = opts!.targetIdx!;
     faction = opts!.faction!;
   } else {
-    const preferDog = Math.random() < 0.5;
-    const primary = preferDog ? dogEmpty : catEmpty;
-    const secondary = preferDog ? catEmpty : dogEmpty;
-    const pool = primary.length > 0 ? primary : secondary;
-    target = pool[Math.floor(Math.random() * pool.length)]!;
-    faction = isCorrectSide(target, "dog") ? "dog" : "cat";
+    // Prefer the side already closer to conquest
+    let dogHybridCount = 0;
+    let catHybridCount = 0;
+    for (let i = 0; i < size; i++) {
+      const cell = board[i];
+      if (!cell || cell.faction !== "hybrid") continue;
+      if (isCorrectSide(i, "dog")) dogHybridCount++;
+      else catHybridCount++;
+    }
+
+    const preferDog =
+      dogHybridCount > catHybridCount
+        ? Math.random() < 0.72
+        : catHybridCount > dogHybridCount
+          ? Math.random() < 0.28
+          : Math.random() < 0.5;
+
+    if (preferDog) {
+      if (dogEmpty.length > 0) {
+        target = dogEmpty[Math.floor(Math.random() * dogEmpty.length)]!;
+        faction = "dog";
+      } else {
+        target = catEmpty[Math.floor(Math.random() * catEmpty.length)]!;
+        faction = "cat";
+      }
+    } else {
+      if (catEmpty.length > 0) {
+        target = catEmpty[Math.floor(Math.random() * catEmpty.length)]!;
+        faction = "cat";
+      } else {
+        target = dogEmpty[Math.floor(Math.random() * dogEmpty.length)]!;
+        faction = "dog";
+      }
+    }
   }
 
   const variant = pickSmartVariant(board, faction);
@@ -108,9 +142,17 @@ export async function serverCommitSpawn(
     tier: 1,
     variant,
   };
+
   state.energy = clampServerEnergy(energy - SPAWN_ENERGY, 0);
   state.board = board;
   state.lastRegenAt = Date.now();
+
+  // Conquest Event check (full + no merges left → conquered flag)
+  const updated = updateConquerFlags(state as any);
+  Object.assign(state, {
+    dogSideConquered: updated.dogSideConquered,
+    catSideConquered: updated.catSideConquered,
+  });
 
   await writeProgress(userId, state, { touchSyncClock: true });
   return { ok: true, state };

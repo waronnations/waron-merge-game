@@ -1,5 +1,4 @@
 // src/lib/game/hybrid.ts
-// Pure hybrid resolve / sacrifice / conquer logic
 import type { GameState, HybridNFT } from "./types";
 import {
   HYBRID_SACRIFICE_GLORY,
@@ -14,7 +13,6 @@ import {
 } from "@/lib/constants";
 import { updateConquerFlags } from "./helpers";
 
-/** Resolves a pending hybrid clash (sacrifice for rewards, or keep as unit). */
 export function resolveHybridState(
   s: GameState,
   choice: "sacrifice" | "keep",
@@ -38,7 +36,6 @@ export function resolveHybridState(
     return updateConquerFlags(next);
   }
 
-  // Keep on board (on the target side = opponent side of the merge)
   board[to] = {
     id,
     faction: "hybrid",
@@ -60,7 +57,6 @@ export function resolveHybridState(
   return updateConquerFlags(next);
 }
 
-/** Finalizes a pending hybrid with AI-generated art. */
 export function completeHybridWithArtState(
   s: GameState,
   imageUrl: string,
@@ -120,7 +116,6 @@ export type SacrificeBoardHybridOutcome =
     }
   | { ok: false; reason: string };
 
-/** Sacrifice a single hybrid already on the board. */
 export function sacrificeBoardHybridState(
   s: GameState,
   idx: number,
@@ -155,8 +150,10 @@ export function sacrificeBoardHybridState(
 }
 
 /**
- * Mass-sacrifice every hybrid on a conquered side.
- * Gives 1.5× bonus when the side is actually conquered.
+ * Mass-sacrifice an entire conquered / locked side.
+ * Clears EVERYTHING on the side (hybrids + remaining normals).
+ * Rewards use 1.5× for every hybrid found.
+ * This is the Conquest Event resolution.
  */
 export function sacrificeConqueredSideState(
   s: GameState,
@@ -168,7 +165,7 @@ export function sacrificeConqueredSideState(
   }
 
   const board = s.board.slice();
-  let count = 0;
+  let hybridCount = 0;
   const startCol = side === "dog" ? 0 : 3;
   const endCol = side === "dog" ? 3 : BOARD_SIZE;
 
@@ -176,22 +173,29 @@ export function sacrificeConqueredSideState(
     for (let col = startCol; col < endCol; col++) {
       const idx = row * BOARD_SIZE + col;
       const cell = board[idx];
-      if (cell && cell.faction === "hybrid") {
-        board[idx] = null;
-        count++;
+      if (cell) {
+        if (cell.faction === "hybrid") hybridCount++;
+        board[idx] = null; // clear normals + hybrids
       }
     }
   }
 
-  if (count === 0) {
-    return { ok: false, reason: "no_hybrids" };
+  if (hybridCount === 0) {
+    // Still allow clearing a fully locked side that somehow has zero hybrids
+    // (edge case) – just clear with zero reward
+    let nextState: GameState = {
+      ...s,
+      board,
+      lastSeenAt: Date.now(),
+    };
+    nextState = updateConquerFlags(nextState);
+    return { ok: true, nextState, glory: 0, wardog: 0, warcat: 0 };
   }
 
-  // Base reward × count + 50% conquest bonus
   const mult = 1.5;
-  const glory = Math.round(HYBRID_SACRIFICE_GLORY * count * mult);
-  const wardog = +(HYBRID_SACRIFICE_WARDOG * count * mult).toFixed(2);
-  const warcat = +(HYBRID_SACRIFICE_WARCAT * count * mult).toFixed(2);
+  const glory = Math.round(HYBRID_SACRIFICE_GLORY * hybridCount * mult);
+  const wardog = +(HYBRID_SACRIFICE_WARDOG * hybridCount * mult).toFixed(2);
+  const warcat = +(HYBRID_SACRIFICE_WARCAT * hybridCount * mult).toFixed(2);
 
   let nextState: GameState = {
     ...s,

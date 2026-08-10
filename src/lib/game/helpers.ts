@@ -1,6 +1,4 @@
 // src/lib/game/helpers.ts
-// Pure helpers + localStorage persistence for the client game state.
-// All game constants come from @/lib/constants — never duplicate them here.
 import type { Faction } from "@/lib/units";
 import { cellVariant } from "@/lib/units";
 import {
@@ -30,11 +28,7 @@ export function isCorrectSide(
 }
 
 /**
- * Smart variant picker – keeps any side mergeable until the very last cells.
- * Priority (strong finish logic):
- *  1. Most common existing tier-1 variant on the side → instant merges
- *  2. Most common any-variant on the side
- *  3. Pure random only when the side is empty
+ * Smart variant picker – frequency aware for finishing sides.
  */
 export function pickSmartVariant(
   board: (Cell | null)[],
@@ -43,7 +37,7 @@ export function pickSmartVariant(
   const sideStart = faction === "dog" ? 0 : 3;
   const sideEnd = faction === "dog" ? 3 : BOARD_SIZE;
 
-  const tier1Count = [0, 0, 0]; // index = variant
+  const tier1Count = [0, 0, 0];
   const anyCount = [0, 0, 0];
 
   for (let row = 0; row < BOARD_SIZE; row++) {
@@ -58,7 +52,6 @@ export function pickSmartVariant(
     }
   }
 
-  // Helper: pick the variant with the highest count
   const bestOf = (counts: number[]) => {
     let best = 0;
     let bestCount = -1;
@@ -71,24 +64,120 @@ export function pickSmartVariant(
     return bestCount > 0 ? best : -1;
   };
 
-  // 1. Prefer most common tier-1 (instant merge)
   const bestTier1 = bestOf(tier1Count);
   if (bestTier1 >= 0) return bestTier1;
 
-  // 2. Prefer most common existing variant
   const bestAny = bestOf(anyCount);
   if (bestAny >= 0) return bestAny;
 
-  // 3. Side empty → classic random
   return Math.floor(Math.random() * 3);
 }
 
+export function isSideFull(
+  board: (Cell | null)[],
+  side: "dog" | "cat",
+): boolean {
+  const startCol = side === "dog" ? 0 : 3;
+  const endCol = side === "dog" ? 3 : BOARD_SIZE;
+
+  for (let row = 0; row < BOARD_SIZE; row++) {
+    for (let col = startCol; col < endCol; col++) {
+      const idx = row * BOARD_SIZE + col;
+      if (board[idx] === null) return false;
+    }
+  }
+  return true;
+}
+
 /**
- * Production-safe board sanitizer.
- * - Fixed length, unique ids, valid faction/tier/variant
- * - Side fix (NO REARRANGE): if a non-hybrid is on the wrong half we only
- *   correct its faction in-place. Positions are never moved.
+ * Returns true if there is at least one legal merge possible on the side.
+ * - Normals: same tier + same variant
+ * - Hybrids: same tier
  */
+export function hasPossibleMergesOnSide(
+  board: (Cell | null)[],
+  side: "dog" | "cat",
+): boolean {
+  const startCol = side === "dog" ? 0 : 3;
+  const endCol = side === "dog" ? 3 : BOARD_SIZE;
+
+  // Group normals by "tier-variant"
+  const normalGroups = new Map<string, number>();
+  // Group hybrids by tier
+  const hybridGroups = new Map<number, number>();
+
+  for (let row = 0; row < BOARD_SIZE; row++) {
+    for (let col = startCol; col < endCol; col++) {
+      const idx = row * BOARD_SIZE + col;
+      const cell = board[idx];
+      if (!cell) continue;
+
+      if (cell.faction === "hybrid") {
+        hybridGroups.set(cell.tier, (hybridGroups.get(cell.tier) || 0) + 1);
+      } else if (cell.faction === side) {
+        const key = `${cell.tier}-${cellVariant(cell)}`;
+        normalGroups.set(key, (normalGroups.get(key) || 0) + 1);
+      }
+    }
+  }
+
+  for (const count of normalGroups.values()) {
+    if (count >= 2) return true;
+  }
+  for (const count of hybridGroups.values()) {
+    if (count >= 2) return true;
+  }
+  return false;
+}
+
+export function isDogSideFullOfHybrids(board: (Cell | null)[]): boolean {
+  for (let row = 0; row < BOARD_SIZE; row++) {
+    for (let col = 0; col < 3; col++) {
+      const idx = row * BOARD_SIZE + col;
+      const cell = board[idx];
+      if (!cell || cell.faction !== "hybrid") return false;
+    }
+  }
+  return true;
+}
+
+export function isCatSideFullOfHybrids(board: (Cell | null)[]): boolean {
+  for (let row = 0; row < BOARD_SIZE; row++) {
+    for (let col = 3; col < BOARD_SIZE; col++) {
+      const idx = row * BOARD_SIZE + col;
+      const cell = board[idx];
+      if (!cell || cell.faction !== "hybrid") return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * Conquest Event trigger:
+ * - Pure full-hybrid side  OR
+ * - Side is completely full AND no legal merges remain
+ */
+export function updateConquerFlags(s: GameState): GameState {
+  const dogPure = isDogSideFullOfHybrids(s.board);
+  const catPure = isCatSideFullOfHybrids(s.board);
+
+  const dogLocked =
+    isSideFull(s.board, "dog") && !hasPossibleMergesOnSide(s.board, "dog");
+  const catLocked =
+    isSideFull(s.board, "cat") && !hasPossibleMergesOnSide(s.board, "cat");
+
+  const dog = dogPure || dogLocked;
+  const cat = catPure || catLocked;
+
+  if (dog === s.dogSideConquered && cat === s.catSideConquered) return s;
+
+  return {
+    ...s,
+    dogSideConquered: dog,
+    catSideConquered: cat,
+  };
+}
+
 export function sanitizeBoard(board: unknown): (Cell | null)[] {
   const size = BOARD_SIZE * BOARD_SIZE;
   const out: (Cell | null)[] = Array(size).fill(null);
@@ -101,17 +190,13 @@ export function sanitizeBoard(board: unknown): (Cell | null)[] {
     if (!raw || typeof raw !== "object") continue;
     const c = raw as Partial<Cell>;
 
-    if (typeof c.id !== "number" || !Number.isFinite(c.id) || c.id <= 0) {
-      continue;
-    }
+    if (typeof c.id !== "number" || !Number.isFinite(c.id) || c.id <= 0) continue;
     const id = Math.floor(c.id);
     if (seen.has(id)) continue;
     seen.add(id);
 
     const faction = c.faction;
-    if (faction !== "dog" && faction !== "cat" && faction !== "hybrid") {
-      continue;
-    }
+    if (faction !== "dog" && faction !== "cat" && faction !== "hybrid") continue;
 
     const tier =
       typeof c.tier === "number" && Number.isFinite(c.tier)
@@ -133,12 +218,10 @@ export function sanitizeBoard(board: unknown): (Cell | null)[] {
     out[i] = cell;
   }
 
-  // ── SIDE FIX (position-preserving) ────────────────────────────────
   for (let i = 0; i < size; i++) {
     const cell = out[i];
     if (!cell || cell.faction === "hybrid") continue;
     if (isCorrectSide(i, cell.faction)) continue;
-
     out[i] = {
       ...cell,
       faction: isCorrectSide(i, "dog") ? "dog" : "cat",
@@ -187,7 +270,6 @@ export function makeInitialBoard(): (Cell | null)[] {
   return board;
 }
 
-// ── One-time tasks removed ──────────────────────────────────────────
 export function defaultTasks(): Task[] {
   return [];
 }
@@ -196,7 +278,6 @@ export function normalizeTasks(_tasks: Task[] | undefined | null): Task[] {
   return [];
 }
 
-// ── Only 3 Daily Ops ────────────────────────────────────────────────
 export const DAILY_QUEST_POOL: Omit<DailyQuest, "progress" | "claimed">[] = [
   {
     id: "dq_merge15",
@@ -300,39 +381,6 @@ export function applyOfflineEnergyRegen(s: GameState): GameState {
   };
 }
 
-export function isDogSideFullOfHybrids(board: (Cell | null)[]): boolean {
-  for (let row = 0; row < BOARD_SIZE; row++) {
-    for (let col = 0; col < 3; col++) {
-      const idx = row * BOARD_SIZE + col;
-      const cell = board[idx];
-      if (!cell || cell.faction !== "hybrid") return false;
-    }
-  }
-  return true;
-}
-
-export function isCatSideFullOfHybrids(board: (Cell | null)[]): boolean {
-  for (let row = 0; row < BOARD_SIZE; row++) {
-    for (let col = 3; col < BOARD_SIZE; col++) {
-      const idx = row * BOARD_SIZE + col;
-      const cell = board[idx];
-      if (!cell || cell.faction !== "hybrid") return false;
-    }
-  }
-  return true;
-}
-
-export function updateConquerFlags(s: GameState): GameState {
-  const dog = isDogSideFullOfHybrids(s.board);
-  const cat = isCatSideFullOfHybrids(s.board);
-  if (dog === s.dogSideConquered && cat === s.catSideConquered) return s;
-  return {
-    ...s,
-    dogSideConquered: dog,
-    catSideConquered: cat,
-  };
-}
-
 export function bumpDailyQuest(
   s: GameState,
   type: "merge" | "spawn" | "tierUp",
@@ -353,7 +401,6 @@ export function bumpDailyQuest(
 }
 
 export function updateTaskProgress(s: GameState): GameState {
-  // Tasks system currently disabled / empty
   return s;
 }
 
@@ -422,6 +469,6 @@ export function save(s: GameState): void {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
   } catch {
-    /* ignore quota errors */
+    /* ignore */
   }
 }

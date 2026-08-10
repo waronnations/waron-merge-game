@@ -173,6 +173,9 @@ export function computeNormalMerge(
   const unlocked = evaluateAchievements(next, { combo: comboCount });
   next = applyAchievementRewards(next, unlocked);
 
+  // Conquest Event check after normal merge
+  next = updateConquerFlags(next);
+
   return {
     nextState: next,
     result: {
