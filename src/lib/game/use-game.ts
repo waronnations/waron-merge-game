@@ -206,7 +206,13 @@ export function useGame() {
 
         setTimeout(() => {
           setState((prev) => {
+            // Stronger guards against stale / random modal
             if (prev.explosion?.key !== explosionKey) return prev;
+            if (prev.pendingHybrid) return prev; // already handled
+            // Board must still be empty at the clash positions
+            if (prev.board[from] !== null || prev.board[to] !== null)
+              return prev;
+
             const next = {
               ...prev,
               explosion: null,
@@ -228,7 +234,13 @@ export function useGame() {
       }
 
       // 2. Hybrid ↔ Hybrid merge (any same-tier hybrids)
-      const hybridMerge = computeHybridMerge(s, from, to, comboMult, comboCount);
+      const hybridMerge = computeHybridMerge(
+        s,
+        from,
+        to,
+        comboMult,
+        comboCount,
+      );
       if (hybridMerge) {
         stateRef.current = hybridMerge.nextState;
         setState(hybridMerge.nextState);

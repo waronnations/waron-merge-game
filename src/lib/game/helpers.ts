@@ -1,6 +1,4 @@
 // src/lib/game/helpers.ts
-// Pure helpers + localStorage persistence for the client game state.
-// All game constants come from @/lib/constants — never duplicate them here.
 import type { Faction } from "@/lib/units";
 import { cellVariant } from "@/lib/units";
 import {
@@ -29,13 +27,6 @@ export function isCorrectSide(
   return faction === "dog" ? col < 3 : col >= 3;
 }
 
-/**
- * Smart variant picker – frequency aware for finishing sides.
- * Priority:
- *  1. Most common existing tier-1 variant on the side → instant merges
- *  2. Most common any-variant on the side
- *  3. Pure random only when the side is empty
- */
 export function pickSmartVariant(
   board: (Cell | null)[],
   faction: Faction,
@@ -95,11 +86,6 @@ export function isSideFull(
   return true;
 }
 
-/**
- * Returns true if there is at least one legal merge possible on the side.
- * - Normals: same tier + same variant
- * - Hybrids: same tier
- */
 export function hasPossibleMergesOnSide(
   board: (Cell | null)[],
   side: "dog" | "cat",
@@ -174,12 +160,6 @@ export function isCatSideFullOfHybrids(board: (Cell | null)[]): boolean {
   return true;
 }
 
-/**
- * Conquest Event triggers when:
- * - ≥ 14 hybrids on the side
- * - OR pure full-hybrid side
- * - OR side completely full + no legal merges left
- */
 export function updateConquerFlags(s: GameState): GameState {
   const dogHybrids = countHybridsOnSide(s.board, "dog");
   const catHybrids = countHybridsOnSide(s.board, "cat");
@@ -204,9 +184,6 @@ export function updateConquerFlags(s: GameState): GameState {
   };
 }
 
-/**
- * Production-safe board sanitizer.
- */
 export function sanitizeBoard(board: unknown): (Cell | null)[] {
   const size = BOARD_SIZE * BOARD_SIZE;
   const out: (Cell | null)[] = Array(size).fill(null);
@@ -219,17 +196,13 @@ export function sanitizeBoard(board: unknown): (Cell | null)[] {
     if (!raw || typeof raw !== "object") continue;
     const c = raw as Partial<Cell>;
 
-    if (typeof c.id !== "number" || !Number.isFinite(c.id) || c.id <= 0) {
-      continue;
-    }
+    if (typeof c.id !== "number" || !Number.isFinite(c.id) || c.id <= 0) continue;
     const id = Math.floor(c.id);
     if (seen.has(id)) continue;
     seen.add(id);
 
     const faction = c.faction;
-    if (faction !== "dog" && faction !== "cat" && faction !== "hybrid") {
-      continue;
-    }
+    if (faction !== "dog" && faction !== "cat" && faction !== "hybrid") continue;
 
     const tier =
       typeof c.tier === "number" && Number.isFinite(c.tier)
@@ -255,7 +228,6 @@ export function sanitizeBoard(board: unknown): (Cell | null)[] {
     const cell = out[i];
     if (!cell || cell.faction === "hybrid") continue;
     if (isCorrectSide(i, cell.faction)) continue;
-
     out[i] = {
       ...cell,
       faction: isCorrectSide(i, "dog") ? "dog" : "cat",
@@ -492,6 +464,12 @@ export function load(): GameState {
     const base = initialState();
     const merged = { ...base, ...parsed } as GameState;
     merged.board = sanitizeBoard(merged.board);
+
+    // CRITICAL: never restore a pending hybrid / explosion from storage
+    // (this was the main cause of the random "Legendary Hybrid Born" modal)
+    merged.pendingHybrid = null;
+    merged.explosion = null;
+
     return applyOfflineEnergyRegen(merged);
   } catch {
     return initialState();
@@ -501,7 +479,13 @@ export function load(): GameState {
 export function save(s: GameState): void {
   if (typeof window === "undefined") return;
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
+    // Never persist transient modal state
+    const toSave = {
+      ...s,
+      pendingHybrid: null,
+      explosion: null,
+    };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
   } catch {
     /* ignore */
   }

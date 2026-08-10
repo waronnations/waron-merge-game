@@ -1,7 +1,4 @@
 // src/lib/game/server-reconcile.ts
-// Server-snapshot reconciliation (applyServerState / applyServerEconomy /
-// hydrate) extracted from the useGame hook. Preserves nuke economy fields
-// as authoritative from the server.
 import { LOCAL_BOARD_LOCK_MS, STARTER_PACK, TERRORIST_THRESHOLD } from "@/lib/constants";
 import type { GameState } from "./types";
 import { clampEnergy, sanitizeBoard } from "./helpers";
@@ -21,6 +18,9 @@ export function hydrateState(
     board: partial.board ? sanitizeBoard(partial.board) : s.board,
     energy:
       partial.energy !== undefined ? clampEnergy(partial.energy) : s.energy,
+    // Never bring back a stale pending hybrid
+    pendingHybrid: null,
+    explosion: null,
   };
 }
 
@@ -29,13 +29,6 @@ export interface ApplyServerStateOutcome {
   preferLocalBoard: boolean;
 }
 
-/**
- * Reconciles a server snapshot with the local optimistic state.
- * - Prefer local board under lock / higher (or equal) units / merges not lower
- * - This prevents rearrange-on-reopen when the player only swapped units
- * - Never re-introduce pendingIdleReward from server
- * - Always take authoritative nuke economy fields from server
- */
 export function applyServerStateLogic(
   s: GameState,
   incoming: GameState,
@@ -46,8 +39,6 @@ export function applyServerStateLogic(
   const serverUnits = serverBoard.filter(Boolean).length;
   const underLocalLock = Date.now() < refs.localBoardLockUntil;
 
-  // Prefer local board whenever unit count is equal-or-higher and merges are not lower.
-  // This keeps player-arranged positions across reopen / hydrate.
   const preferLocalBoard =
     underLocalLock ||
     localUnits > serverUnits ||
@@ -94,17 +85,15 @@ export function applyServerStateLogic(
     comboCount: preferLocalBoard
       ? (s.comboCount ?? incoming.comboCount)
       : (incoming.comboCount ?? s.comboCount),
-    pendingHybrid: preferLocalBoard
-      ? (s.pendingHybrid ?? incoming.pendingHybrid)
-      : (incoming.pendingHybrid ?? s.pendingHybrid),
-    explosion: preferLocalBoard
-      ? (s.explosion ?? incoming.explosion)
-      : (incoming.explosion ?? s.explosion),
+
+    // CRITICAL FIX: never restore pendingHybrid / explosion from server
+    pendingHybrid: null,
+    explosion: null,
+
     hybrids: preferLocalBoard
       ? (s.hybrids ?? incoming.hybrids)
       : (incoming.hybrids ?? s.hybrids),
 
-    // ── Nuke fields – always take server as source of truth ──
     nukesOwned: Number(incoming.nukesOwned ?? s.nukesOwned ?? 0),
     nukesLaunchedToday: Number(
       incoming.nukesLaunchedToday ?? s.nukesLaunchedToday ?? 0,
@@ -121,7 +110,6 @@ export function applyServerStateLogic(
         ? incoming.lastNukeTargetId
         : s.lastNukeTargetId,
 
-    // keep deprecated field in sync
     nukesUsedToday: Number(
       incoming.nukesLaunchedToday ??
         incoming.nukesUsedToday ??
@@ -129,13 +117,15 @@ export function applyServerStateLogic(
         0,
     ),
 
-    // Never resurrect dismissed idle popup
     pendingIdleReward: s.pendingIdleReward,
     lastSeenAt: Math.max(
       Number(s.lastSeenAt) || 0,
       Number(incoming.lastSeenAt) || 0,
       now,
     ),
+
+    dogSideConquered: Boolean(incoming.dogSideConquered ?? s.dogSideConquered),
+    catSideConquered: Boolean(incoming.catSideConquered ?? s.catSideConquered),
   };
 
   delete (next as any).rouletteSpins;
@@ -148,11 +138,6 @@ export interface ApplyServerEconomyOutcome {
   boardChanged: boolean;
 }
 
-/**
- * Patch economy / meta from server commits WITHOUT touching the board
- * (unless incoming.board is explicitly provided, e.g. hybrid resolve).
- * Always accepts authoritative nuke fields from server.
- */
 export function applyServerEconomyLogic(
   s: GameState,
   incoming: Partial<GameState>,
@@ -193,16 +178,14 @@ export function applyServerEconomyLogic(
         ...((incoming.achievements as string[]) ?? []),
       ]),
     ),
-    pendingHybrid:
-      incoming.pendingHybrid !== undefined
-        ? incoming.pendingHybrid
-        : s.pendingHybrid,
+
+    // CRITICAL: never accept a stale pendingHybrid from economy patches
+    pendingHybrid: null,
+    explosion: null,
+
     hybrids: incoming.hybrids !== undefined ? incoming.hybrids : s.hybrids,
-    explosion:
-      incoming.explosion !== undefined ? incoming.explosion : s.explosion,
     board: incoming.board ? sanitizeBoard(incoming.board) : s.board,
 
-    // ── Nuke fields (authoritative from server) ─────────────
     nukesOwned:
       incoming.nukesOwned !== undefined
         ? Number(incoming.nukesOwned)
@@ -222,9 +205,7 @@ export function applyServerEconomyLogic(
     isTerrorist:
       incoming.isTerrorist !== undefined
         ? Boolean(incoming.isTerrorist)
-        : s.isTerrorist ||
-          Number(incoming.totalNukesLaunched ?? s.totalNukesLaunched) >=
-            TERRORIST_THRESHOLD,
+        : s.isTerrorist,
     lastNukeTargetId:
       incoming.lastNukeTargetId !== undefined
         ? incoming.lastNukeTargetId
@@ -232,12 +213,18 @@ export function applyServerEconomyLogic(
     nukesUsedToday:
       incoming.nukesLaunchedToday !== undefined
         ? Number(incoming.nukesLaunchedToday)
-        : incoming.nukesUsedToday !== undefined
-          ? Number(incoming.nukesUsedToday)
-          : Number(s.nukesUsedToday ?? s.nukesLaunchedToday ?? 0),
+        : s.nukesUsedToday,
+
+    dogSideConquered:
+      incoming.dogSideConquered !== undefined
+        ? Boolean(incoming.dogSideConquered)
+        : s.dogSideConquered,
+    catSideConquered:
+      incoming.catSideConquered !== undefined
+        ? Boolean(incoming.catSideConquered)
+        : s.catSideConquered,
   };
 
-  return { next, boardChanged: Boolean(incoming.board) };
+  const boardChanged = !!incoming.board;
+  return { next, boardChanged };
 }
-
-export { LOCAL_BOARD_LOCK_MS };
