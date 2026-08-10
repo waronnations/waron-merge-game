@@ -10,7 +10,6 @@ import {
   EARLY_GAME_MERGES,
   EARLY_GAME_REGEN_MULT,
   STARTER_PACK,
-  TERRORIST_THRESHOLD,
 } from "@/lib/constants";
 import { getActiveEvents, getEnergyRegenMultiplier } from "@/lib/events";
 import type { Cell, DailyQuest, GameState, Task } from "./types";
@@ -32,10 +31,10 @@ export function isCorrectSide(
 
 /**
  * Smart variant picker – keeps any side mergeable until the very last cells.
- * Priority:
- *  1. Existing tier-1 variants on the side → instant merge possible
- *  2. Any existing variant on the side → stay on known lines
- *  3. Pure random only when the side is completely empty
+ * Priority (strong finish logic):
+ *  1. Most common existing tier-1 variant on the side → instant merges
+ *  2. Most common any-variant on the side
+ *  3. Pure random only when the side is empty
  */
 export function pickSmartVariant(
   board: (Cell | null)[],
@@ -44,8 +43,8 @@ export function pickSmartVariant(
   const sideStart = faction === "dog" ? 0 : 3;
   const sideEnd = faction === "dog" ? 3 : BOARD_SIZE;
 
-  const tier1Variants = new Set<number>();
-  const anyVariants = new Set<number>();
+  const tier1Count = [0, 0, 0]; // index = variant
+  const anyCount = [0, 0, 0];
 
   for (let row = 0; row < BOARD_SIZE; row++) {
     for (let col = sideStart; col < sideEnd; col++) {
@@ -54,19 +53,33 @@ export function pickSmartVariant(
       if (!cell || cell.faction !== faction) continue;
 
       const v = cellVariant(cell);
-      anyVariants.add(v);
-      if (cell.tier === 1) tier1Variants.add(v);
+      anyCount[v]++;
+      if (cell.tier === 1) tier1Count[v]++;
     }
   }
 
-  if (tier1Variants.size > 0) {
-    const arr = Array.from(tier1Variants);
-    return arr[Math.floor(Math.random() * arr.length)]!;
-  }
-  if (anyVariants.size > 0) {
-    const arr = Array.from(anyVariants);
-    return arr[Math.floor(Math.random() * arr.length)]!;
-  }
+  // Helper: pick the variant with the highest count
+  const bestOf = (counts: number[]) => {
+    let best = 0;
+    let bestCount = -1;
+    for (let v = 0; v < 3; v++) {
+      if (counts[v] > bestCount) {
+        bestCount = counts[v];
+        best = v;
+      }
+    }
+    return bestCount > 0 ? best : -1;
+  };
+
+  // 1. Prefer most common tier-1 (instant merge)
+  const bestTier1 = bestOf(tier1Count);
+  if (bestTier1 >= 0) return bestTier1;
+
+  // 2. Prefer most common existing variant
+  const bestAny = bestOf(anyCount);
+  if (bestAny >= 0) return bestAny;
+
+  // 3. Side empty → classic random
   return Math.floor(Math.random() * 3);
 }
 
@@ -324,7 +337,7 @@ export function bumpDailyQuest(
   s: GameState,
   type: "merge" | "spawn" | "tierUp",
   amount = 1,
-  tier?: number,
+  _tier?: number,
 ): GameState {
   const quests = s.dailyQuests.map((q) => {
     if (q.claimed) return q;
@@ -332,9 +345,6 @@ export function bumpDailyQuest(
       return { ...q, progress: Math.min(q.target, q.progress + amount) };
     }
     if (type === "spawn" && q.id === "dq_spawn10") {
-      return { ...q, progress: Math.min(q.target, q.progress + amount) };
-    }
-    if (type === "tierUp" && tier && q.id.startsWith("dq_merge")) {
       return { ...q, progress: Math.min(q.target, q.progress + amount) };
     }
     return q;
