@@ -27,7 +27,7 @@ import {
 import {
   computeHybridClash,
   computeNormalMerge,
-  computeAIHybridMerge,
+  computeHybridMerge,
 } from "./merge";
 import { computeRollbackSpawn, computeSpawn } from "./spawn";
 import {
@@ -227,13 +227,13 @@ export function useGame() {
         return clash.result;
       }
 
-      // 2. Unlimited AI-Hybrid merge (only AI-generated versions)
-      const aiHybrid = computeAIHybridMerge(s, from, to, comboMult, comboCount);
-      if (aiHybrid) {
-        stateRef.current = aiHybrid.nextState;
-        setState(aiHybrid.nextState);
+      // 2. Hybrid ↔ Hybrid merge (any same-tier hybrids)
+      const hybridMerge = computeHybridMerge(s, from, to, comboMult, comboCount);
+      if (hybridMerge) {
+        stateRef.current = hybridMerge.nextState;
+        setState(hybridMerge.nextState);
         bumpBoardRevision();
-        return aiHybrid.result;
+        return hybridMerge.result;
       }
 
       // 3. Normal same-faction merge
@@ -342,7 +342,7 @@ export function useGame() {
     [],
   );
 
-  /** NEW: Mass sacrifice an entire conquered side */
+  /** Mass sacrifice an entire conquered side */
   const sacrificeConqueredSide = useCallback(
     (
       side: "dog" | "cat",
@@ -515,7 +515,7 @@ export function useGame() {
     resolveHybrid,
     completeHybridWithArt,
     sacrificeBoardHybrid,
-    sacrificeConqueredSide, // ← new
+    sacrificeConqueredSide,
     claimDaily,
     canClaimDaily,
     claimTask,

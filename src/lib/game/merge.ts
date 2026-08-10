@@ -12,7 +12,12 @@ import {
   applyAchievementRewards,
 } from "@/lib/achievements";
 import type { GameState, MergeResult } from "./types";
-import { isCorrectSide, bumpDailyQuest, updateTaskProgress, updateConquerFlags } from "./helpers";
+import {
+  isCorrectSide,
+  bumpDailyQuest,
+  updateTaskProgress,
+  updateConquerFlags,
+} from "./helpers";
 
 export interface HybridClashOutcome {
   nextState: GameState;
@@ -184,11 +189,12 @@ export function computeNormalMerge(
 }
 
 /**
- * NEW: Unlimited AI-Hybrid merge
- * Only two AI-generated hybrids (have imageUrl or seed) of the same tier can merge.
- * Result = higher tier hybrid that keeps AI status.
+ * Hybrid ↔ Hybrid merge (any hybrids of the same tier)
+ * - Unlimited progression
+ * - AI art is kept ONLY if BOTH parents are AI-generated
+ * - Otherwise the result is a normal basic hybrid
  */
-export function computeAIHybridMerge(
+export function computeHybridMerge(
   s: GameState,
   from: number,
   to: number,
@@ -199,22 +205,17 @@ export function computeAIHybridMerge(
   const b = s.board[to];
   if (!a || !b) return null;
 
-  // Must both be hybrids
+  // Must both be hybrids of the exact same tier
   if (a.faction !== "hybrid" || b.faction !== "hybrid") return null;
   if (a.tier !== b.tier) return null;
 
-  // Only AI-generated versions are allowed to merge unlimited
   const aIsAI = !!(a.imageUrl || a.seed);
   const bIsAI = !!(b.imageUrl || b.seed);
-  if (!aIsAI || !bIsAI) return null;
+  const keepAI = aIsAI && bIsAI;
 
   const newTier = a.tier + 1;
   const newBoard = s.board.slice();
   newBoard[from] = null;
-
-  // Keep the nicer AI art if available, otherwise the first one
-  const keepArt = a.imageUrl || b.imageUrl;
-  const keepSeed = a.seed || b.seed;
 
   newBoard[to] = {
     id: s.nextId,
@@ -223,11 +224,14 @@ export function computeAIHybridMerge(
     isHybrid: true,
     parentDogId: a.parentDogId || b.parentDogId,
     parentCatId: a.parentCatId || b.parentCatId,
-    imageUrl: keepArt,
-    seed: keepSeed,
+    // Only keep AI art if both parents had it
+    imageUrl: keepAI ? a.imageUrl || b.imageUrl : undefined,
+    seed: keepAI ? a.seed || b.seed : undefined,
   };
 
-  const gloryGain = Math.round(25 * Math.pow(1.8, newTier - 6) * comboMult);
+  const gloryGain = Math.round(
+    25 * Math.pow(1.8, Math.max(0, newTier - 6)) * comboMult,
+  );
 
   let next: GameState = {
     ...s,
@@ -244,7 +248,7 @@ export function computeAIHybridMerge(
 
   next = bumpDailyQuest(next, "merge", 1);
   next = updateTaskProgress(next);
-  next = updateConquerFlags(next); // re-check conquer after merge
+  next = updateConquerFlags(next);
 
   const unlocked = evaluateAchievements(next, { combo: comboCount });
   next = applyAchievementRewards(next, unlocked);
