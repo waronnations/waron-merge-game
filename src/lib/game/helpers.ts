@@ -242,6 +242,52 @@ export function applyOfflineEnergyRegen(s: GameState): GameState {
   return { ...s, energy, lastRegenAt: last };
 }
 
+// ── NEW: Board Conquer helpers ──────────────────────────────────────
+/**
+ * Returns true if every cell in the left half (WARDOG side, cols 0-2)
+ * is a hybrid (no empty cells).
+ */
+export function isDogSideFullOfHybrids(board: (Cell | null)[]): boolean {
+  for (let row = 0; row < BOARD_SIZE; row++) {
+    for (let col = 0; col < 3; col++) {
+      const idx = row * BOARD_SIZE + col;
+      const cell = board[idx];
+      if (!cell || cell.faction !== "hybrid") return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * Returns true if every cell in the right half (WARCAT side, cols 3-5)
+ * is a hybrid (no empty cells).
+ */
+export function isCatSideFullOfHybrids(board: (Cell | null)[]): boolean {
+  for (let row = 0; row < BOARD_SIZE; row++) {
+    for (let col = 3; col < BOARD_SIZE; col++) {
+      const idx = row * BOARD_SIZE + col;
+      const cell = board[idx];
+      if (!cell || cell.faction !== "hybrid") return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * After any hybrid placement or sacrifice, re-evaluate conquest flags.
+ */
+export function updateConquerFlags(s: GameState): GameState {
+  const dog = isDogSideFullOfHybrids(s.board);
+  const cat = isCatSideFullOfHybrids(s.board);
+  if (dog === s.dogSideConquered && cat === s.catSideConquered) return s;
+  return {
+    ...s,
+    dogSideConquered: dog,
+    catSideConquered: cat,
+  };
+}
+
+// ── Initial State Factory ───────────────────────────────────────────
 export function initialState(): GameState {
   const now = Date.now();
   const today = truncateToDay(now);
@@ -282,6 +328,10 @@ export function initialState(): GameState {
     lastMergeAt: 0,
     comboCount: 0,
     achievements: [],
+
+    // ── NEW conquer flags ──────────────────────────────────────────
+    dogSideConquered: false,
+    catSideConquered: false,
   };
 }
 
@@ -337,6 +387,14 @@ export function load(): GameState {
     if (!Array.isArray(merged.hybrids)) merged.hybrids = [];
     if (!(merged as any).explosion) (merged as any).explosion = null;
 
+    // Safe defaults for new conquer flags (old saves)
+    if (typeof merged.dogSideConquered !== "boolean") {
+      merged.dogSideConquered = false;
+    }
+    if (typeof merged.catSideConquered !== "boolean") {
+      merged.catSideConquered = false;
+    }
+
     const today = truncateToDay(Date.now());
     if (!merged.dailyQuests?.length || merged.dailyQuestsDate !== today) {
       merged.dailyQuests = pickDailyQuests(today);
@@ -368,7 +426,8 @@ export function load(): GameState {
         ? Math.floor(merged.nextId)
         : 100;
 
-    return applyOfflineEnergyRegen(merged);
+    // Re-evaluate conquer flags on load (in case board changed)
+    return updateConquerFlags(applyOfflineEnergyRegen(merged));
   } catch {
     return initialState();
   }

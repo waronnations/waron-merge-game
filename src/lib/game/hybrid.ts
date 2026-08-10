@@ -1,5 +1,5 @@
 // src/lib/game/hybrid.ts
-// Pure hybrid resolve/sacrifice logic extracted from the useGame hook.
+// Pure hybrid resolve / sacrifice / conquer logic
 import type { GameState, HybridNFT } from "./types";
 import {
   HYBRID_SACRIFICE_GLORY,
@@ -10,7 +10,9 @@ import {
   HYBRID_ART_BONUS_TOKENS,
   HYBRID_IMAGE_PROMPT_TEMPLATE,
   HYBRID_TIER,
+  BOARD_SIZE,
 } from "@/lib/constants";
+import { updateConquerFlags } from "./helpers";
 
 /** Resolves a pending hybrid clash (sacrifice for rewards, or keep as unit). */
 export function resolveHybridState(
@@ -23,7 +25,7 @@ export function resolveHybridState(
   const board = s.board.slice();
 
   if (choice === "sacrifice") {
-    return {
+    const next = {
       ...s,
       board,
       pendingHybrid: null,
@@ -33,9 +35,10 @@ export function resolveHybridState(
       highestTier: Math.max(s.highestTier, HYBRID_TIER),
       lastSeenAt: Date.now(),
     };
+    return updateConquerFlags(next);
   }
 
-  // Keep on board
+  // Keep on board (on the target side = opponent side of the merge)
   board[to] = {
     id,
     faction: "hybrid",
@@ -45,7 +48,7 @@ export function resolveHybridState(
     parentCatId,
   };
 
-  return {
+  const next = {
     ...s,
     board,
     pendingHybrid: null,
@@ -53,9 +56,11 @@ export function resolveHybridState(
     highestTier: Math.max(s.highestTier, HYBRID_TIER),
     lastSeenAt: Date.now(),
   };
+
+  return updateConquerFlags(next);
 }
 
-/** Finalizes a pending hybrid with AI-generated art, adding it to the NFT list. */
+/** Finalizes a pending hybrid with AI-generated art. */
 export function completeHybridWithArtState(
   s: GameState,
   imageUrl: string,
@@ -90,7 +95,7 @@ export function completeHybridWithArtState(
     imageUrl,
   };
 
-  return {
+  const next = {
     ...s,
     board,
     pendingHybrid: null,
@@ -101,6 +106,8 @@ export function completeHybridWithArtState(
     highestTier: Math.max(s.highestTier, HYBRID_TIER),
     lastSeenAt: Date.now(),
   };
+
+  return updateConquerFlags(next);
 }
 
 export type SacrificeBoardHybridOutcome =
@@ -113,7 +120,7 @@ export type SacrificeBoardHybridOutcome =
     }
   | { ok: false; reason: string };
 
-/** Sacrifice a hybrid already sitting on the board (AI art or procedural). */
+/** Sacrifice a single hybrid already on the board. */
 export function sacrificeBoardHybridState(
   s: GameState,
   idx: number,
@@ -133,7 +140,7 @@ export function sacrificeBoardHybridState(
   const wardog = HYBRID_SACRIFICE_WARDOG;
   const warcat = HYBRID_SACRIFICE_WARCAT;
 
-  const nextState: GameState = {
+  let nextState: GameState = {
     ...s,
     board,
     glory: s.glory + glory,
@@ -141,6 +148,61 @@ export function sacrificeBoardHybridState(
     warcatTokens: s.warcatTokens + warcat,
     lastSeenAt: Date.now(),
   };
+
+  nextState = updateConquerFlags(nextState);
+
+  return { ok: true, nextState, glory, wardog, warcat };
+}
+
+/**
+ * NEW: Mass-sacrifice every hybrid on a conquered side.
+ * Gives a bonus multiplier when the side is actually conquered.
+ */
+export function sacrificeConqueredSideState(
+  s: GameState,
+  side: "dog" | "cat",
+): SacrificeBoardHybridOutcome {
+  const isConquered = side === "dog" ? s.dogSideConquered : s.catSideConquered;
+  if (!isConquered) {
+    return { ok: false, reason: "side_not_conquered" };
+  }
+
+  const board = s.board.slice();
+  let count = 0;
+  const startCol = side === "dog" ? 0 : 3;
+  const endCol = side === "dog" ? 3 : BOARD_SIZE;
+
+  for (let row = 0; row < BOARD_SIZE; row++) {
+    for (let col = startCol; col < endCol; col++) {
+      const idx = row * BOARD_SIZE + col;
+      const cell = board[idx];
+      if (cell && cell.faction === "hybrid") {
+        board[idx] = null;
+        count++;
+      }
+    }
+  }
+
+  if (count === 0) {
+    return { ok: false, reason: "no_hybrids" };
+  }
+
+  // Base reward × count + 50% conquest bonus
+  const mult = 1.5;
+  const glory = Math.round(HYBRID_SACRIFICE_GLORY * count * mult);
+  const wardog = +(HYBRID_SACRIFICE_WARDOG * count * mult).toFixed(2);
+  const warcat = +(HYBRID_SACRIFICE_WARCAT * count * mult).toFixed(2);
+
+  let nextState: GameState = {
+    ...s,
+    board,
+    glory: s.glory + glory,
+    wardogTokens: s.wardogTokens + wardog,
+    warcatTokens: s.warcatTokens + warcat,
+    lastSeenAt: Date.now(),
+  };
+
+  nextState = updateConquerFlags(nextState);
 
   return { ok: true, nextState, glory, wardog, warcat };
 }

@@ -36,45 +36,6 @@ export interface PendingHybrid {
   to: number;
 }
 
-export interface Task {
-  id: string;
-  title: string;
-  desc: string;
-  reward: number;
-  wardog?: number;
-  warcat?: number;
-  done: boolean;
-  claimed: boolean;
-}
-
-export interface DailyQuest {
-  id: string;
-  title: string;
-  desc: string;
-  target: number;
-  progress: number;
-  reward: number;
-  wardog?: number;
-  warcat?: number;
-  energy?: number;
-  claimed: boolean;
-}
-
-export interface Referral {
-  code: string;
-  name: string;
-  joinedAt: number;
-  glory: number;
-}
-
-export interface IdleReward {
-  glory: number;
-  energy: number;
-  wardog: number;
-  warcat: number;
-  minutes: number;
-}
-
 export interface GameState {
   board: (Cell | null)[];
   nextId: number;
@@ -85,18 +46,15 @@ export interface GameState {
   highestTier: number;
   lastDailyClaim: number;
   dailyStreak: number;
-  tasks: Task[];
-  dailyQuests: DailyQuest[];
-  dailyQuestsDate: number;
   wardogTokens: number;
   warcatTokens: number;
   referralCode: string;
-  referrals: Referral[];
+  referrals: any[]; // keep existing type
   invitedBy?: string;
   hasSeenTutorial: boolean;
   gloryBoostUntil: number;
   lastSeenAt: number;
-  pendingIdleReward: IdleReward | null;
+  pendingIdleReward: any | null;
   nukesUsedToday: number;
   lastNukeDay: number;
   pendingHybrid: PendingHybrid | null;
@@ -120,16 +78,10 @@ export interface GameState {
 
   /** Inventory of unopened gift boxes */
   giftBoxes?: Partial<Record<GiftBoxId, number>>;
-}
 
-export interface MergeResult {
-  ok: boolean;
-  token?: "wardog" | "warcat";
-  amount?: number;
-  isHybrid?: boolean;
-  combo?: number;
-  comboMult?: number;
-  unlocked?: string[];
-  gloryGained?: number;
-  variantPerfect?: boolean;
+  // ── NEW: Board Conquer system ────────────────────────────────
+  /** Left half (cols 0-2) is fully occupied by hybrids */
+  dogSideConquered: boolean;
+  /** Right half (cols 3-5) is fully occupied by hybrids */
+  catSideConquered: boolean;
 }
