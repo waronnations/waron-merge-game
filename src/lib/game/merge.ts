@@ -12,7 +12,7 @@ import {
   applyAchievementRewards,
 } from "@/lib/achievements";
 import type { GameState, MergeResult } from "./types";
-import { isCorrectSide, bumpDailyQuest, updateTaskProgress } from "./helpers";
+import { isCorrectSide, bumpDailyQuest, updateTaskProgress, updateConquerFlags } from "./helpers";
 
 export interface HybridClashOutcome {
   nextState: GameState;
@@ -97,7 +97,7 @@ export function computeHybridClash(
   };
 }
 
-/** Handles a normal same-faction, same-tier, same-variant merge (T1–T4). */
+/** Normal same-faction merge (T1–T5) */
 export function computeNormalMerge(
   s: GameState,
   from: number,
@@ -116,7 +116,6 @@ export function computeNormalMerge(
   if (a.faction !== b.faction) return null;
   if (a.tier !== b.tier) return null;
 
-  // Only identical unit lines merge (not just same tier)
   const va = cellVariant(a);
   const vb = cellVariant(b);
   if (va !== vb) return null;
@@ -139,7 +138,7 @@ export function computeNormalMerge(
   };
 
   const eventMult = getGloryMultiplier(events, newTier);
-  const variantMult = VARIANT_PERFECT_MULT; // always perfect because we already enforced it
+  const variantMult = VARIANT_PERFECT_MULT;
   const boost = shopBoost * eventMult * comboMult * variantMult;
   const gloryGain = Math.round(10 * Math.pow(2.2, newTier - 2) * boost);
 
@@ -180,6 +179,85 @@ export function computeNormalMerge(
       unlocked,
       gloryGained: gloryGain,
       variantPerfect: true,
+    },
+  };
+}
+
+/**
+ * NEW: Unlimited AI-Hybrid merge
+ * Only two AI-generated hybrids (have imageUrl or seed) of the same tier can merge.
+ * Result = higher tier hybrid that keeps AI status.
+ */
+export function computeAIHybridMerge(
+  s: GameState,
+  from: number,
+  to: number,
+  comboMult: number,
+  comboCount: number,
+): { nextState: GameState; result: MergeResult } | null {
+  const a = s.board[from];
+  const b = s.board[to];
+  if (!a || !b) return null;
+
+  // Must both be hybrids
+  if (a.faction !== "hybrid" || b.faction !== "hybrid") return null;
+  if (a.tier !== b.tier) return null;
+
+  // Only AI-generated versions are allowed to merge unlimited
+  const aIsAI = !!(a.imageUrl || a.seed);
+  const bIsAI = !!(b.imageUrl || b.seed);
+  if (!aIsAI || !bIsAI) return null;
+
+  const newTier = a.tier + 1;
+  const newBoard = s.board.slice();
+  newBoard[from] = null;
+
+  // Keep the nicer AI art if available, otherwise the first one
+  const keepArt = a.imageUrl || b.imageUrl;
+  const keepSeed = a.seed || b.seed;
+
+  newBoard[to] = {
+    id: s.nextId,
+    faction: "hybrid",
+    tier: newTier,
+    isHybrid: true,
+    parentDogId: a.parentDogId || b.parentDogId,
+    parentCatId: a.parentCatId || b.parentCatId,
+    imageUrl: keepArt,
+    seed: keepSeed,
+  };
+
+  const gloryGain = Math.round(25 * Math.pow(1.8, newTier - 6) * comboMult);
+
+  let next: GameState = {
+    ...s,
+    board: newBoard,
+    nextId: s.nextId + 1,
+    glory: s.glory + gloryGain,
+    energy: Math.max(0, s.energy - ENERGY_PER_MERGE),
+    totalMerges: s.totalMerges + 1,
+    highestTier: Math.max(s.highestTier, newTier),
+    lastMergeAt: Date.now(),
+    lastSeenAt: Date.now(),
+    comboCount,
+  };
+
+  next = bumpDailyQuest(next, "merge", 1);
+  next = updateTaskProgress(next);
+  next = updateConquerFlags(next); // re-check conquer after merge
+
+  const unlocked = evaluateAchievements(next, { combo: comboCount });
+  next = applyAchievementRewards(next, unlocked);
+
+  return {
+    nextState: next,
+    result: {
+      ok: true,
+      isHybrid: true,
+      combo: comboCount,
+      comboMult,
+      unlocked,
+      gloryGained: gloryGain,
     },
   };
 }

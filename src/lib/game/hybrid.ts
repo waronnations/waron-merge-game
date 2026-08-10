@@ -155,8 +155,8 @@ export function sacrificeBoardHybridState(
 }
 
 /**
- * NEW: Mass-sacrifice every hybrid on a conquered side.
- * Gives a bonus multiplier when the side is actually conquered.
+ * Mass-sacrifice every hybrid on a conquered side.
+ * Gives 1.5× bonus when the side is actually conquered.
  */
 export function sacrificeConqueredSideState(
   s: GameState,

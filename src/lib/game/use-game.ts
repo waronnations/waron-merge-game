@@ -1,8 +1,7 @@
 // src/lib/game/use-game.ts
 // The client useGame hook: wires together the pure state-transition logic
 // from merge/spawn/hybrid/daily/idle/energy/server-reconcile into React
-// state + optimistic-update/rollback semantics. Identical return shape to
-// the original monolithic implementation.
+// state + optimistic-update/rollback semantics.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { MAX_TIER, type Faction } from "@/lib/units";
 import {
@@ -25,12 +24,17 @@ import {
   sanitizeBoard,
   truncateToDay,
 } from "./helpers";
-import { computeHybridClash, computeNormalMerge } from "./merge";
+import {
+  computeHybridClash,
+  computeNormalMerge,
+  computeAIHybridMerge,
+} from "./merge";
 import { computeRollbackSpawn, computeSpawn } from "./spawn";
 import {
   completeHybridWithArtState,
   resolveHybridState,
   sacrificeBoardHybridState,
+  sacrificeConqueredSideState,
 } from "./hybrid";
 import {
   canClaimDailyPure,
@@ -183,6 +187,7 @@ export function useGame() {
       combo?: number;
       comboMult?: number;
       unlocked?: string[];
+      gloryGained?: number;
     } => {
       const s = stateRef.current;
       if (from === to) return { ok: false };
@@ -191,7 +196,7 @@ export function useGame() {
       if (!a || !b) return { ok: false };
       if (s.energy < ENERGY_PER_MERGE) return { ok: false };
 
-      // ===== HYBRID CLASH =====
+      // 1. Classic Hybrid Clash (T5 dog + T5 cat)
       const clash = computeHybridClash(s, from, to, comboCount);
       if (clash) {
         const { nextState, dogId, catId, explosionKey } = clash;
@@ -222,6 +227,16 @@ export function useGame() {
         return clash.result;
       }
 
+      // 2. Unlimited AI-Hybrid merge (only AI-generated versions)
+      const aiHybrid = computeAIHybridMerge(s, from, to, comboMult, comboCount);
+      if (aiHybrid) {
+        stateRef.current = aiHybrid.nextState;
+        setState(aiHybrid.nextState);
+        bumpBoardRevision();
+        return aiHybrid.result;
+      }
+
+      // 3. Normal same-faction merge
       const merged = computeNormalMerge(s, from, to, comboMult, comboCount);
       if (!merged) return { ok: false };
 
@@ -302,7 +317,7 @@ export function useGame() {
     });
   }, []);
 
-  /** Sacrifice a hybrid already sitting on the board (AI art or procedural). */
+  /** Sacrifice a hybrid already sitting on the board. */
   const sacrificeBoardHybrid = useCallback(
     (
       idx: number,
@@ -311,6 +326,31 @@ export function useGame() {
       | { ok: false; reason: string } => {
       const s = stateRef.current;
       const outcome = sacrificeBoardHybridState(s, idx);
+      if (!outcome.ok) return outcome;
+
+      stateRef.current = outcome.nextState;
+      setState(outcome.nextState);
+      bumpBoardRevision();
+
+      return {
+        ok: true,
+        glory: outcome.glory,
+        wardog: outcome.wardog,
+        warcat: outcome.warcat,
+      };
+    },
+    [],
+  );
+
+  /** NEW: Mass sacrifice an entire conquered side */
+  const sacrificeConqueredSide = useCallback(
+    (
+      side: "dog" | "cat",
+    ):
+      | { ok: true; glory: number; wardog: number; warcat: number }
+      | { ok: false; reason: string } => {
+      const s = stateRef.current;
+      const outcome = sacrificeConqueredSideState(s, side);
       if (!outcome.ok) return outcome;
 
       stateRef.current = outcome.nextState;
@@ -418,12 +458,8 @@ export function useGame() {
 
   /**
    * @deprecated – free personal nuke is removed.
-   * Nukes are now only obtained via shop (nukesOwned) and launched
-   * server-side with launchNuke({ targetNationId }).
-   * This local function is kept as a no-op so old UI calls don't crash.
    */
   const useNuke = useCallback(() => {
-    // no-op – use the server function launchNuke instead
     console.warn(
       "[WarOnNations] useNuke is deprecated. Use launchNuke(targetNationId) instead.",
     );
@@ -439,12 +475,6 @@ export function useGame() {
     });
   }, []);
 
-  /**
-   * Reconciles a server snapshot with the local optimistic state.
-   * - Prefer local board under lock / higher merges / equal-or-more units
-   * - Never re-introduce pendingIdleReward from server
-   * - Always take authoritative nuke economy fields from server
-   */
   const applyServerState = useCallback((incoming: GameState) => {
     setState((s) => {
       const { next, preferLocalBoard } = applyServerStateLogic(s, incoming, {
@@ -461,11 +491,6 @@ export function useGame() {
     });
   }, []);
 
-  /**
-   * Patch economy / meta from server commits WITHOUT touching the board
-   * (unless incoming.board is explicitly provided, e.g. hybrid resolve).
-   * Always accepts authoritative nuke fields from server.
-   */
   const applyServerEconomy = useCallback((incoming: Partial<GameState>) => {
     setState((s) => {
       const { next, boardChanged } = applyServerEconomyLogic(s, incoming);
@@ -490,6 +515,7 @@ export function useGame() {
     resolveHybrid,
     completeHybridWithArt,
     sacrificeBoardHybrid,
+    sacrificeConqueredSide, // ← new
     claimDaily,
     canClaimDaily,
     claimTask,
@@ -499,8 +525,8 @@ export function useGame() {
     dismissTutorial,
     grantStarterPack,
     recoverEnergy,
-    useNuke, // deprecated no-op
-    nukeWorld, // deprecated no-op
+    useNuke,
+    nukeWorld,
     hydrate,
     applyServerState,
     applyServerEconomy,
