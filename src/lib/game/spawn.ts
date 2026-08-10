@@ -2,7 +2,13 @@
 import type { Faction } from "@/lib/units";
 import { SPAWN_ENERGY } from "@/lib/constants";
 import type { GameState } from "./types";
-import { clampEnergy, isCorrectSide, randomFaction, bumpDailyQuest } from "./helpers";
+import {
+  clampEnergy,
+  isCorrectSide,
+  randomFaction,
+  bumpDailyQuest,
+  pickSmartVariant,
+} from "./helpers";
 
 export type SpawnOutcome =
   | {
@@ -53,14 +59,15 @@ export function computeSpawn(s: GameState): SpawnOutcome {
     }
   }
 
-  const targetIdx = pool[Math.floor(Math.random() * pool.length)];
+  const targetIdx = pool[Math.floor(Math.random() * pool.length)]!;
 
   if (!isCorrectSide(targetIdx, finalFaction)) {
     return { ok: false, reason: "Board completely full" };
   }
 
+  const variant = pickSmartVariant(s.board, finalFaction);
+
   const unitId = s.nextId;
-  const variant = Math.floor(Math.random() * 3);
   const board = s.board.slice();
   board[targetIdx] = {
     id: unitId,
@@ -79,7 +86,13 @@ export function computeSpawn(s: GameState): SpawnOutcome {
   };
   next = bumpDailyQuest(next, "spawn", 1);
 
-  return { ok: true, nextState: next, targetIdx, faction: finalFaction, unitId };
+  return {
+    ok: true,
+    nextState: next,
+    targetIdx,
+    faction: finalFaction,
+    unitId,
+  };
 }
 
 export function computeRollbackSpawn(

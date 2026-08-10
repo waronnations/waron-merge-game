@@ -2,6 +2,7 @@
 // Pure helpers + localStorage persistence for the client game state.
 // All game constants come from @/lib/constants — never duplicate them here.
 import type { Faction } from "@/lib/units";
+import { cellVariant } from "@/lib/units";
 import {
   BOARD_SIZE,
   MAX_ENERGY,
@@ -27,6 +28,46 @@ export function isCorrectSide(
   if (faction === "hybrid") return true;
   const col = index % BOARD_SIZE;
   return faction === "dog" ? col < 3 : col >= 3;
+}
+
+/**
+ * Smart variant picker – keeps any side mergeable until the very last cells.
+ * Priority:
+ *  1. Existing tier-1 variants on the side → instant merge possible
+ *  2. Any existing variant on the side → stay on known lines
+ *  3. Pure random only when the side is completely empty
+ */
+export function pickSmartVariant(
+  board: (Cell | null)[],
+  faction: Faction,
+): number {
+  const sideStart = faction === "dog" ? 0 : 3;
+  const sideEnd = faction === "dog" ? 3 : BOARD_SIZE;
+
+  const tier1Variants = new Set<number>();
+  const anyVariants = new Set<number>();
+
+  for (let row = 0; row < BOARD_SIZE; row++) {
+    for (let col = sideStart; col < sideEnd; col++) {
+      const idx = row * BOARD_SIZE + col;
+      const cell = board[idx];
+      if (!cell || cell.faction !== faction) continue;
+
+      const v = cellVariant(cell);
+      anyVariants.add(v);
+      if (cell.tier === 1) tier1Variants.add(v);
+    }
+  }
+
+  if (tier1Variants.size > 0) {
+    const arr = Array.from(tier1Variants);
+    return arr[Math.floor(Math.random() * arr.length)]!;
+  }
+  if (anyVariants.size > 0) {
+    const arr = Array.from(anyVariants);
+    return arr[Math.floor(Math.random() * arr.length)]!;
+  }
+  return Math.floor(Math.random() * 3);
 }
 
 /**
@@ -181,7 +222,6 @@ export function mulberry32(a: number) {
 }
 
 export function pickDailyQuests(_seed: number): DailyQuest[] {
-  // Always return the fixed 3 daily ops
   return DAILY_QUEST_POOL.map((q) => ({
     ...q,
     progress: 0,
@@ -229,24 +269,24 @@ export function applyOfflineEnergyRegen(s: GameState): GameState {
     return { ...s, energy: MAX_ENERGY, lastRegenAt: now };
   }
 
-  const events = getActiveEvents(now);
-  const eventMult = getEnergyRegenMultiplier(events);
+  const elapsed = now - last;
+  const events = getActiveEvents();
+  const mult = getEnergyRegenMultiplier(events);
   const earlyMult =
-    Number(s.totalMerges ?? 0) < EARLY_GAME_MERGES ? EARLY_GAME_REGEN_MULT : 1;
-  const energyMult = eventMult * earlyMult;
-  const gained = Math.floor(((now - last) / ENERGY_REGEN_MS) * energyMult);
-  if (gained <= 0) return { ...s, energy, lastRegenAt: last };
+    s.totalMerges < EARLY_GAME_MERGES ? EARLY_GAME_REGEN_MULT : 1;
+  const regenMs = ENERGY_REGEN_MS / (mult * earlyMult);
+  const gained = Math.floor(elapsed / regenMs);
 
-  energy = Math.min(MAX_ENERGY, energy + gained);
-  last = last + Math.floor((gained * ENERGY_REGEN_MS) / energyMult);
-  return { ...s, energy, lastRegenAt: last };
+  if (gained <= 0) return s;
+
+  energy = clampEnergy(energy + gained);
+  return {
+    ...s,
+    energy,
+    lastRegenAt: last + gained * regenMs,
+  };
 }
 
-// ── NEW: Board Conquer helpers ──────────────────────────────────────
-/**
- * Returns true if every cell in the left half (WARDOG side, cols 0-2)
- * is a hybrid (no empty cells).
- */
 export function isDogSideFullOfHybrids(board: (Cell | null)[]): boolean {
   for (let row = 0; row < BOARD_SIZE; row++) {
     for (let col = 0; col < 3; col++) {
@@ -258,10 +298,6 @@ export function isDogSideFullOfHybrids(board: (Cell | null)[]): boolean {
   return true;
 }
 
-/**
- * Returns true if every cell in the right half (WARCAT side, cols 3-5)
- * is a hybrid (no empty cells).
- */
 export function isCatSideFullOfHybrids(board: (Cell | null)[]): boolean {
   for (let row = 0; row < BOARD_SIZE; row++) {
     for (let col = 3; col < BOARD_SIZE; col++) {
@@ -273,9 +309,6 @@ export function isCatSideFullOfHybrids(board: (Cell | null)[]): boolean {
   return true;
 }
 
-/**
- * After any hybrid placement or sacrifice, re-evaluate conquest flags.
- */
 export function updateConquerFlags(s: GameState): GameState {
   const dog = isDogSideFullOfHybrids(s.board);
   const cat = isCatSideFullOfHybrids(s.board);
@@ -287,7 +320,33 @@ export function updateConquerFlags(s: GameState): GameState {
   };
 }
 
-// ── Initial State Factory ───────────────────────────────────────────
+export function bumpDailyQuest(
+  s: GameState,
+  type: "merge" | "spawn" | "tierUp",
+  amount = 1,
+  tier?: number,
+): GameState {
+  const quests = s.dailyQuests.map((q) => {
+    if (q.claimed) return q;
+    if (type === "merge" && q.id.startsWith("dq_merge")) {
+      return { ...q, progress: Math.min(q.target, q.progress + amount) };
+    }
+    if (type === "spawn" && q.id === "dq_spawn10") {
+      return { ...q, progress: Math.min(q.target, q.progress + amount) };
+    }
+    if (type === "tierUp" && tier && q.id.startsWith("dq_merge")) {
+      return { ...q, progress: Math.min(q.target, q.progress + amount) };
+    }
+    return q;
+  });
+  return { ...s, dailyQuests: quests };
+}
+
+export function updateTaskProgress(s: GameState): GameState {
+  // Tasks system currently disabled / empty
+  return s;
+}
+
 export function initialState(): GameState {
   const now = Date.now();
   const today = truncateToDay(now);
@@ -312,24 +371,19 @@ export function initialState(): GameState {
     gloryBoostUntil: 0,
     lastSeenAt: now,
     pendingIdleReward: null,
-
     nukesOwned: 0,
     nukesLaunchedToday: 0,
     lastNukeDay: 0,
     totalNukesLaunched: 0,
     isTerrorist: false,
     lastNukeTargetId: null,
-
     nukesUsedToday: 0,
-
     pendingHybrid: null,
     hybrids: [],
     explosion: null,
     lastMergeAt: 0,
     comboCount: 0,
     achievements: [],
-
-    // ── NEW conquer flags ──────────────────────────────────────────
     dogSideConquered: false,
     catSideConquered: false,
   };
@@ -341,132 +395,23 @@ export function load(): GameState {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return initialState();
     const parsed = JSON.parse(raw) as Partial<GameState>;
-
+    if (!parsed.board || parsed.board.length !== BOARD_SIZE * BOARD_SIZE) {
+      return initialState();
+    }
     const base = initialState();
-    const merged: GameState = { ...base, ...parsed } as GameState;
-
-    merged.board = sanitizeBoard(parsed.board);
-
-    delete (merged as Partial<GameState> & { rouletteSpins?: number })
-      .rouletteSpins;
-
-    merged.tasks = normalizeTasks(merged.tasks);
-    if (!merged.referrals) merged.referrals = [];
-    if (!merged.referralCode || merged.referralCode.length < 5) {
-      merged.referralCode = makeReferralCode();
-    }
-
-    if (typeof merged.nukesOwned !== "number" || !Number.isFinite(merged.nukesOwned)) {
-      merged.nukesOwned = 0;
-    }
-    if (
-      typeof merged.nukesLaunchedToday !== "number" ||
-      !Number.isFinite(merged.nukesLaunchedToday)
-    ) {
-      merged.nukesLaunchedToday =
-        typeof merged.nukesUsedToday === "number" ? merged.nukesUsedToday : 0;
-    }
-    if (typeof merged.lastNukeDay !== "number" || !Number.isFinite(merged.lastNukeDay)) {
-      merged.lastNukeDay = 0;
-    }
-    if (
-      typeof merged.totalNukesLaunched !== "number" ||
-      !Number.isFinite(merged.totalNukesLaunched)
-    ) {
-      merged.totalNukesLaunched = 0;
-    }
-    merged.isTerrorist =
-      !!merged.isTerrorist || merged.totalNukesLaunched >= TERRORIST_THRESHOLD;
-    if (merged.lastNukeTargetId === undefined) {
-      merged.lastNukeTargetId = null;
-    }
-
-    merged.nukesUsedToday = merged.nukesLaunchedToday;
-
-    if (!merged.pendingHybrid) merged.pendingHybrid = null;
-    if (!Array.isArray(merged.hybrids)) merged.hybrids = [];
-    if (!(merged as any).explosion) (merged as any).explosion = null;
-
-    // Safe defaults for new conquer flags (old saves)
-    if (typeof merged.dogSideConquered !== "boolean") {
-      merged.dogSideConquered = false;
-    }
-    if (typeof merged.catSideConquered !== "boolean") {
-      merged.catSideConquered = false;
-    }
-
-    const today = truncateToDay(Date.now());
-    if (!merged.dailyQuests?.length || merged.dailyQuestsDate !== today) {
-      merged.dailyQuests = pickDailyQuests(today);
-      merged.dailyQuestsDate = today;
-    } else {
-      // Keep only the 3 allowed daily ops (migrate old saves)
-      const allowedIds = new Set(DAILY_QUEST_POOL.map((q) => q.id));
-      const kept = merged.dailyQuests.filter((q) => allowedIds.has(q.id));
-      if (kept.length < 3) {
-        merged.dailyQuests = pickDailyQuests(today);
-      } else {
-        merged.dailyQuests = kept.map((q) => {
-          const def = DAILY_QUEST_POOL.find((d) => d.id === q.id)!;
-          return {
-            ...def,
-            progress: typeof q.progress === "number" ? q.progress : 0,
-            claimed: !!q.claimed,
-          };
-        });
-      }
-      merged.dailyQuestsDate = today;
-    }
-
-    merged.energy = clampEnergy(merged.energy);
-    merged.nextId =
-      typeof merged.nextId === "number" &&
-      Number.isFinite(merged.nextId) &&
-      merged.nextId > 0
-        ? Math.floor(merged.nextId)
-        : 100;
-
-    // Re-evaluate conquer flags on load (in case board changed)
-    return updateConquerFlags(applyOfflineEnergyRegen(merged));
+    const merged = { ...base, ...parsed } as GameState;
+    merged.board = sanitizeBoard(merged.board);
+    return applyOfflineEnergyRegen(merged);
   } catch {
     return initialState();
   }
 }
 
-export function save(state: GameState) {
+export function save(s: GameState): void {
   if (typeof window === "undefined") return;
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
   } catch {
-    /* storage full / disabled — non-fatal */
+    /* ignore quota errors */
   }
-}
-
-export function updateTaskProgress(s: GameState): GameState {
-  return { ...s, tasks: [] };
-}
-
-export function bumpDailyQuest(
-  s: GameState,
-  kind: "merge" | "spawn" | "tierUp",
-  amount = 1,
-  _tier = 0,
-): GameState {
-  const dailyQuests = s.dailyQuests.map((q) => {
-    if (q.claimed) return q;
-    if (kind === "merge" && q.id.startsWith("dq_merge")) {
-      return {
-        ...q,
-        progress: Math.min(q.target, q.progress + amount),
-      };
-    }
-    if (kind === "spawn" && q.id === "dq_spawn10") {
-      return {
-        ...q,
-        progress: Math.min(q.target, q.progress + amount),
-      };
-    }
-    return q;
-  });
-  return { ...s, dailyQuests };
 }

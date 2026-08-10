@@ -15,6 +15,7 @@ import {
   clampServerEnergy,
   isCorrectSide,
 } from "./state.server";
+import { pickSmartVariant } from "../helpers";
 
 /** Returns true if the user's nation was hit less than NUKE_HIT_DISABLE_MS ago */
 async function isNationNukedLocked(userId: number): Promise<boolean> {
@@ -82,7 +83,6 @@ export async function serverCommitSpawn(
     (opts.faction === "dog" || opts.faction === "cat");
 
   if (clientWantsPlacement) {
-    // Client already placed optimistically — must match server board or fail.
     if (
       board[opts!.targetIdx!] !== null ||
       !isCorrectSide(opts!.targetIdx!, opts!.faction!)
@@ -96,11 +96,18 @@ export async function serverCommitSpawn(
     const primary = preferDog ? dogEmpty : catEmpty;
     const secondary = preferDog ? catEmpty : dogEmpty;
     const pool = primary.length > 0 ? primary : secondary;
-    target = pool[Math.floor(Math.random() * pool.length)];
+    target = pool[Math.floor(Math.random() * pool.length)]!;
     faction = isCorrectSide(target, "dog") ? "dog" : "cat";
   }
 
-  board[target] = { id: state.nextId++, faction, tier: 1 };
+  const variant = pickSmartVariant(board, faction);
+
+  board[target] = {
+    id: state.nextId++,
+    faction,
+    tier: 1,
+    variant,
+  };
   state.energy = clampServerEnergy(energy - SPAWN_ENERGY, 0);
   state.board = board;
   state.lastRegenAt = Date.now();
