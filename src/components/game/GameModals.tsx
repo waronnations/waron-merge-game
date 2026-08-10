@@ -3,6 +3,7 @@ import { TutorialModal } from "@/components/TutorialModal";
 import { IdleWelcomeModal } from "@/components/IdleWelcomeModal";
 import { DailyBonusModal } from "@/components/DailyBonusModal";
 import { HybridModal } from "@/components/HybridModal";
+import { ConquestModal } from "@/components/ConquestModal";
 import { CocoonGenerateModal } from "@/components/CocoonGenerateModal";
 import { HybridResultModal } from "@/components/HybridResultModal";
 import { NukedLockModal } from "@/components/NukedLockModal";
@@ -10,6 +11,9 @@ import { OpsJailModal } from "@/components/OpsJailModal";
 import { GlobalStrikeToast } from "@/components/GlobalStrikeToast";
 import { GlobalOpsEventToast } from "@/components/GlobalOpsEventToast";
 import type { useGame } from "@/lib/game-state";
+import { isCorrectSide, countHybridsOnSide } from "@/lib/game/helpers";
+import { BOARD_SIZE } from "@/lib/constants";
+import { toast } from "sonner";
 
 export function GameModals({
   game,
@@ -44,6 +48,64 @@ export function GameModals({
   handleResolveHybrid: (choice: "sacrifice" | "keep") => void;
   handleHybridWithArt: (choice: "keep" | "mint") => void | Promise<void>;
 }) {
+  const pending = game.state.pendingHybrid;
+
+  // Determine if this pending hybrid will push a side to ≥ 14
+  let conquestSide: "dog" | "cat" | null = null;
+  let hybridCountOnSide = 0;
+
+  if (pending) {
+    const targetSide = isCorrectSide(pending.to, "dog") ? "dog" : "cat";
+    hybridCountOnSide = countHybridsOnSide(game.state.board, targetSide);
+    // +1 because the pending hybrid will be placed
+    if (hybridCountOnSide + 1 >= 14) {
+      conquestSide = targetSide;
+    }
+  }
+
+  // Also show if the flag is already true and there is a pending hybrid
+  if (
+    !conquestSide &&
+    pending &&
+    (game.state.dogSideConquered || game.state.catSideConquered)
+  ) {
+    conquestSide = game.state.dogSideConquered ? "dog" : "cat";
+    hybridCountOnSide = countHybridsOnSide(game.state.board, conquestSide);
+  }
+
+  const showConquest =
+    !!pending &&
+    !!conquestSide &&
+    !showCocoonModal &&
+    !showResultModal;
+
+  const showNormalHybrid =
+    !!pending &&
+    !showConquest &&
+    !showCocoonModal &&
+    !showResultModal;
+
+  const handleMassSacrifice = () => {
+    if (!conquestSide) return;
+
+    // First place the pending hybrid (keep)
+    handleResolveHybrid("keep");
+
+    // Then mass sacrifice the whole side
+    setTimeout(() => {
+      const result = game.sacrificeConqueredSide(conquestSide!);
+      if (result.ok) {
+        toast.success(
+          `CONQUEST! +${result.glory} Glory · +${result.wardog} $WARDOG · +${result.warcat} $WARCAT`,
+          { duration: 3500 },
+        );
+      } else {
+        toast.error("Mass sacrifice failed");
+      }
+      void forceSync();
+    }, 80);
+  };
+
   return (
     <>
       <NukedLockModal />
@@ -86,10 +148,17 @@ export function GameModals({
         }}
       />
 
+      {/* ── CONQUEST EVENT (replaces normal hybrid modal at 14+) ── */}
+      <ConquestModal
+        open={showConquest}
+        side={conquestSide || "cat"}
+        hybridCount={hybridCountOnSide + (pending ? 1 : 0)}
+        onMassSacrifice={handleMassSacrifice}
+      />
+
+      {/* ── Normal hybrid modal (only when NOT conquest) ── */}
       <HybridModal
-        open={
-          !!game.state.pendingHybrid && !showCocoonModal && !showResultModal
-        }
+        open={showNormalHybrid}
         onResolve={(choice) => {
           if (choice === "generate") {
             setShowCocoonModal(true);
