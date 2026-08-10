@@ -1,4 +1,6 @@
 // src/lib/game/helpers.ts
+// Pure helpers + localStorage persistence for the client game state.
+// All game constants come from @/lib/constants — never duplicate them here.
 import type { Faction } from "@/lib/units";
 import { cellVariant } from "@/lib/units";
 import {
@@ -29,6 +31,10 @@ export function isCorrectSide(
 
 /**
  * Smart variant picker – frequency aware for finishing sides.
+ * Priority:
+ *  1. Most common existing tier-1 variant on the side → instant merges
+ *  2. Most common any-variant on the side
+ *  3. Pure random only when the side is empty
  */
 export function pickSmartVariant(
   board: (Cell | null)[],
@@ -101,9 +107,7 @@ export function hasPossibleMergesOnSide(
   const startCol = side === "dog" ? 0 : 3;
   const endCol = side === "dog" ? 3 : BOARD_SIZE;
 
-  // Group normals by "tier-variant"
   const normalGroups = new Map<string, number>();
-  // Group hybrids by tier
   const hybridGroups = new Map<number, number>();
 
   for (let row = 0; row < BOARD_SIZE; row++) {
@@ -130,6 +134,24 @@ export function hasPossibleMergesOnSide(
   return false;
 }
 
+export function countHybridsOnSide(
+  board: (Cell | null)[],
+  side: "dog" | "cat",
+): number {
+  const startCol = side === "dog" ? 0 : 3;
+  const endCol = side === "dog" ? 3 : BOARD_SIZE;
+  let count = 0;
+
+  for (let row = 0; row < BOARD_SIZE; row++) {
+    for (let col = startCol; col < endCol; col++) {
+      const idx = row * BOARD_SIZE + col;
+      const cell = board[idx];
+      if (cell && cell.faction === "hybrid") count++;
+    }
+  }
+  return count;
+}
+
 export function isDogSideFullOfHybrids(board: (Cell | null)[]): boolean {
   for (let row = 0; row < BOARD_SIZE; row++) {
     for (let col = 0; col < 3; col++) {
@@ -153,11 +175,15 @@ export function isCatSideFullOfHybrids(board: (Cell | null)[]): boolean {
 }
 
 /**
- * Conquest Event trigger:
- * - Pure full-hybrid side  OR
- * - Side is completely full AND no legal merges remain
+ * Conquest Event triggers when:
+ * - ≥ 14 hybrids on the side
+ * - OR pure full-hybrid side
+ * - OR side completely full + no legal merges left
  */
 export function updateConquerFlags(s: GameState): GameState {
+  const dogHybrids = countHybridsOnSide(s.board, "dog");
+  const catHybrids = countHybridsOnSide(s.board, "cat");
+
   const dogPure = isDogSideFullOfHybrids(s.board);
   const catPure = isCatSideFullOfHybrids(s.board);
 
@@ -166,8 +192,8 @@ export function updateConquerFlags(s: GameState): GameState {
   const catLocked =
     isSideFull(s.board, "cat") && !hasPossibleMergesOnSide(s.board, "cat");
 
-  const dog = dogPure || dogLocked;
-  const cat = catPure || catLocked;
+  const dog = dogHybrids >= 14 || dogPure || dogLocked;
+  const cat = catHybrids >= 14 || catPure || catLocked;
 
   if (dog === s.dogSideConquered && cat === s.catSideConquered) return s;
 
@@ -178,6 +204,9 @@ export function updateConquerFlags(s: GameState): GameState {
   };
 }
 
+/**
+ * Production-safe board sanitizer.
+ */
 export function sanitizeBoard(board: unknown): (Cell | null)[] {
   const size = BOARD_SIZE * BOARD_SIZE;
   const out: (Cell | null)[] = Array(size).fill(null);
@@ -190,13 +219,17 @@ export function sanitizeBoard(board: unknown): (Cell | null)[] {
     if (!raw || typeof raw !== "object") continue;
     const c = raw as Partial<Cell>;
 
-    if (typeof c.id !== "number" || !Number.isFinite(c.id) || c.id <= 0) continue;
+    if (typeof c.id !== "number" || !Number.isFinite(c.id) || c.id <= 0) {
+      continue;
+    }
     const id = Math.floor(c.id);
     if (seen.has(id)) continue;
     seen.add(id);
 
     const faction = c.faction;
-    if (faction !== "dog" && faction !== "cat" && faction !== "hybrid") continue;
+    if (faction !== "dog" && faction !== "cat" && faction !== "hybrid") {
+      continue;
+    }
 
     const tier =
       typeof c.tier === "number" && Number.isFinite(c.tier)
@@ -222,6 +255,7 @@ export function sanitizeBoard(board: unknown): (Cell | null)[] {
     const cell = out[i];
     if (!cell || cell.faction === "hybrid") continue;
     if (isCorrectSide(i, cell.faction)) continue;
+
     out[i] = {
       ...cell,
       faction: isCorrectSide(i, "dog") ? "dog" : "cat",
