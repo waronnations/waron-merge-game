@@ -32,9 +32,9 @@ export interface HybridClashOutcome {
 }
 
 /**
- * NEW: Attack a Live Target by merging into it
- * - Player target  → any unit T2+
- * - Nation target  → Tier 5 or Hybrid
+ * Attack a Live Target by merging into it
+ * Player  → any unit (T1+) or Hybrid
+ * Nation  → T5 or Hybrid
  */
 export function computeTargetAttack(
   s: GameState,
@@ -45,27 +45,27 @@ export function computeTargetAttack(
   const target = s.board[to];
 
   if (!attacker || !target || !target.isTarget) return null;
-  if (attacker.faction === "target") return null; // can't attack with another target
+  if (attacker.faction === "target") return null;
 
   const isNation = target.targetType === "nation";
   const isPlayer = target.targetType === "player";
 
-  // Rules
+  // Rules – now more permissive
   if (isPlayer) {
-    // Any unit tier 2 or higher can strike a player
-    if (attacker.tier < 2 && attacker.faction !== "hybrid") return null;
-  }
-
-  if (isNation) {
-    // Only T5 or Hybrid can nuke a country
+    // Any unit can strike a player
+    // (you can change to >= 2 if you want)
+  } else if (isNation) {
+    // Only T5 or Hybrid can nuke
     if (attacker.tier < MAX_TIER && attacker.faction !== "hybrid") return null;
+  } else {
+    return null;
   }
 
   // Perform the attack
   const attackResult = attackTarget(s, to);
   if (!attackResult.ok) return null;
 
-  // Also remove the attacker unit (it was "used" in the attack)
+  // Remove the attacker unit
   const board = [...attackResult.nextState.board];
   board[from] = null;
 
@@ -181,13 +181,10 @@ export function computeNormalMerge(
   const b = s.board[to];
   if (!a || !b) return null;
 
-  // Skip if either is a target (handled by computeTargetAttack)
+  // Skip targets (handled by computeTargetAttack)
   if (a.faction === "target" || b.faction === "target") return null;
 
-  if (a.tier >= MAX_TIER || b.tier >= MAX_TIER) {
-    return null;
-  }
-
+  if (a.tier >= MAX_TIER || b.tier >= MAX_TIER) return null;
   if (a.faction !== b.faction) return null;
   if (a.tier !== b.tier) return null;
 
@@ -243,7 +240,6 @@ export function computeNormalMerge(
   const unlocked = evaluateAchievements(next, { combo: comboCount });
   next = applyAchievementRewards(next, unlocked);
   next = updateConquerFlags(next);
-
   next = tickWarMode(next);
   next = applyMergeControl(next, newTier, true, false);
 
@@ -318,6 +314,7 @@ export function computeHybridMerge(
     glory: s.glory + gloryGain,
     energy: Math.max(0, s.energy - ENERGY_PER_MERGE),
     totalMerges: s.totalMerges + 1,
+    highestTier: Math.max(s.highestTier, newTier),
     lastMergeAt: Date.now(),
     lastSeenAt: Date.now(),
     comboCount,
@@ -326,6 +323,12 @@ export function computeHybridMerge(
   next = bumpDailyQuest(next, "merge", 1);
   next = bumpDailyQuest(next, "hybridMerge", 1);
   next = updateTaskProgress(next);
+
+  const unlocked = evaluateAchievements(next, {
+    combo: comboCount,
+    justHybrid: true,
+  });
+  next = applyAchievementRewards(next, unlocked);
   next = updateConquerFlags(next);
   next = tickWarMode(next);
   next = applyMergeControl(next, newTier, false, true);
@@ -335,9 +338,10 @@ export function computeHybridMerge(
     result: {
       ok: true,
       isHybrid: true,
-      gloryGained: gloryGain,
       combo: comboCount,
       comboMult,
+      unlocked,
+      gloryGained: gloryGain,
     },
   };
 }

@@ -76,7 +76,10 @@ export function useBoardGestures({
   const getSide = (index: number): "dog" | "cat" =>
     index % BOARD_SIZE < 3 ? "dog" : "cat";
 
-  const isValidPlacement = (index: number, faction: Faction | "hybrid" | "target") => {
+  const isValidPlacement = (
+    index: number,
+    faction: Faction | "hybrid" | "target",
+  ) => {
     if (faction === "hybrid" || faction === "target") return true;
     return getSide(index) === faction;
   };
@@ -96,7 +99,7 @@ export function useBoardGestures({
     );
   };
 
-  /** Can we attack this Live Target with the dragged unit? */
+  /** Can the dragged unit attack this Live Target? */
   const canAttackTarget = (from: number, to: number) => {
     const attacker = board[from];
     const target = board[to];
@@ -104,11 +107,11 @@ export function useBoardGestures({
     if (attacker.faction === "target") return false;
 
     if (target.targetType === "player") {
-      // Any T2+ or Hybrid can strike a player
-      return attacker.tier >= 2 || attacker.faction === "hybrid";
+      // Any unit can strike a player
+      return true;
     }
     if (target.targetType === "nation") {
-      // Only T5 or Hybrid can nuke a country
+      // Only T5 or Hybrid can nuke
       return attacker.tier >= MAX_TIER || attacker.faction === "hybrid";
     }
     return false;
@@ -120,7 +123,7 @@ export function useBoardGestures({
     const b = board[to];
     if (!a || !b) return false;
 
-    // NEW: Live Target attacks
+    // Live Target attack
     if (b.isTarget) return canAttackTarget(dragFrom, to);
 
     if (isClashPossible(dragFrom, to)) return true;
@@ -135,7 +138,6 @@ export function useBoardGestures({
     const a = board[dragFrom];
     if (!a) return false;
 
-    // Allow dropping on targets if attack is valid
     if (board[to]?.isTarget) return canAttackTarget(dragFrom, to);
 
     if (isClashPossible(dragFrom, to)) return true;
@@ -218,7 +220,7 @@ export function useBoardGestures({
     const a = board[from];
     const b = board[to];
 
-    // NEW: Attack Live Target
+    // ── LIVE TARGET ATTACK ──────────────────────────────────────
     if (a && b?.isTarget && canAttackTarget(from, to)) {
       const res = onMerge(from, to);
       if (res.ok) {
@@ -262,7 +264,9 @@ export function useBoardGestures({
     ) {
       const res = onMerge(from, to);
       if (res.ok) {
-        haptic(a.tier >= 4 || res.isHybrid ? "heavy" : a.tier >= 3 ? "medium" : "light");
+        haptic(
+          a.tier >= 4 || res.isHybrid ? "heavy" : a.tier >= 3 ? "medium" : "light",
+        );
         if (!res.isHybrid) {
           const displayTier = a.tier >= MAX_TIER ? MAX_TIER : a.tier + 1;
           onMergeSuccess(to, displayTier, a.faction, res.token, res.amount);
@@ -271,7 +275,10 @@ export function useBoardGestures({
         haptic("light");
       }
     } else if (from !== to && a && a.tier < MAX_TIER) {
-      if (isValidPlacement(to, a.faction) && (!b || b.faction === "target")) {
+      if (
+        isValidPlacement(to, a.faction) &&
+        (!b || isValidPlacement(from, b.faction))
+      ) {
         onSwap(from, to);
         haptic("light");
       } else {
@@ -284,68 +291,78 @@ export function useBoardGestures({
     setHoverIdx(null);
   };
 
-  const onPointerDown = useCallback(
-    (idx: number, e: React.PointerEvent) => {
-      const cell = board[idx];
-      if (!cell) return;
+  const onPointerDown = (idx: number, e: React.PointerEvent) => {
+    if (!board[idx]) return;
+    if (e.pointerType === "mouse" && e.button !== 0) return;
 
+    if (e.pointerType === "touch" || e.pointerType === "pen") {
       e.preventDefault();
-      e.stopPropagation();
+    }
 
+    try {
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
       pointerIdRef.current = e.pointerId;
-      (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+    } catch {
+      /* ignore */
+    }
 
-      movedRef.current = false;
-      isLongPressActive.current = false;
-      dragFromRef.current = idx;
-      setDragFrom(idx);
-      setHoverIdx(idx);
+    movedRef.current = false;
+    isLongPressActive.current = false;
+    dragFromRef.current = idx;
+    setDragFrom(idx);
+    scheduleLongPress(idx, board[idx]!);
+  };
 
-      scheduleLongPress(idx, cell);
-    },
-    [board],
-  );
+  const onPointerMove = (e: React.PointerEvent) => {
+    if (dragFromRef.current === null || isLongPressActive.current) return;
 
-  const onPointerMove = useCallback(
-    (e: React.PointerEvent) => {
-      if (dragFromRef.current === null) return;
-      if (pointerIdRef.current !== null && e.pointerId !== pointerIdRef.current) return;
-
+    const dx = Math.abs(e.movementX);
+    const dy = Math.abs(e.movementY);
+    if (dx > 4 || dy > 4) {
       movedRef.current = true;
       clearLongPressTimer();
+    }
 
-      const idx = getSlotFromPoint(e.clientX, e.clientY);
-      setHoverThrottled(idx);
-    },
-    [setHoverThrottled],
-  );
+    const slot = getSlotFromPoint(e.clientX, e.clientY);
+    setHoverThrottled(slot);
+  };
 
-  const onPointerUp = useCallback(() => {
+  const onPointerUp = () => {
     clearLongPressTimer();
+
+    if (isLongPressActive.current) {
+      pointerIdRef.current = null;
+      return;
+    }
+
+    const from = dragFromRef.current;
     const to = hoverIdx;
-    if (to !== null && dragFromRef.current !== null) {
+
+    if (from !== null && to !== null && from !== to) {
       handleDrop(to);
     } else {
       dragFromRef.current = null;
       setDragFrom(null);
       setHoverIdx(null);
     }
-    isLongPressActive.current = false;
-  }, [hoverIdx, board]);
 
-  const onPointerCancel = useCallback(() => {
+    pointerIdRef.current = null;
+  };
+
+  const onPointerCancel = () => {
     clearLongPressTimer();
+    isLongPressActive.current = false;
     dragFromRef.current = null;
     setDragFrom(null);
     setHoverIdx(null);
-    isLongPressActive.current = false;
-  }, []);
+    pointerIdRef.current = null;
+  };
 
-  const onBoardPointerLeave = useCallback(() => {
-    if (dragFromRef.current !== null) {
-      setHoverThrottled(null);
+  const onBoardPointerLeave = () => {
+    if (dragFromRef.current !== null && !isLongPressActive.current) {
+      setHoverIdx(null);
     }
-  }, [setHoverThrottled]);
+  };
 
   return {
     dragFrom,
