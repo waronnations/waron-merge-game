@@ -11,6 +11,123 @@ import {
 } from "@/lib/constants/war-targets";
 import { updateConquerFlags } from "./helpers";
 
+/** Real countries with emoji flags */
+export const NATION_POOL = [
+  { id: "af", name: "Afghanistan", emoji: "🇦🇫" },
+  { id: "al", name: "Albania", emoji: "🇦🇱" },
+  { id: "dz", name: "Algeria", emoji: "🇩🇿" },
+  { id: "ar", name: "Argentina", emoji: "🇦🇷" },
+  { id: "am", name: "Armenia", emoji: "🇦🇲" },
+  { id: "au", name: "Australia", emoji: "🇦🇺" },
+  { id: "at", name: "Austria", emoji: "🇦🇹" },
+  { id: "az", name: "Azerbaijan", emoji: "🇦🇿" },
+  { id: "bh", name: "Bahrain", emoji: "🇧🇭" },
+  { id: "bd", name: "Bangladesh", emoji: "🇧🇩" },
+  { id: "by", name: "Belarus", emoji: "🇧🇾" },
+  { id: "be", name: "Belgium", emoji: "🇧🇪" },
+  { id: "bo", name: "Bolivia", emoji: "🇧🇴" },
+  { id: "ba", name: "Bosnia", emoji: "🇧🇦" },
+  { id: "br", name: "Brazil", emoji: "🇧🇷" },
+  { id: "bg", name: "Bulgaria", emoji: "🇧🇬" },
+  { id: "ca", name: "Canada", emoji: "🇨🇦" },
+  { id: "cl", name: "Chile", emoji: "🇨🇱" },
+  { id: "cn", name: "China", emoji: "🇨🇳" },
+  { id: "co", name: "Colombia", emoji: "🇨🇴" },
+  { id: "cr", name: "Costa Rica", emoji: "🇨🇷" },
+  { id: "hr", name: "Croatia", emoji: "🇭🇷" },
+  { id: "cu", name: "Cuba", emoji: "🇨🇺" },
+  { id: "cy", name: "Cyprus", emoji: "🇨🇾" },
+  { id: "cz", name: "Czechia", emoji: "🇨🇿" },
+  { id: "dk", name: "Denmark", emoji: "🇩🇰" },
+  { id: "do", name: "Dominican", emoji: "🇩🇴" },
+  { id: "ec", name: "Ecuador", emoji: "🇪🇨" },
+  { id: "eg", name: "Egypt", emoji: "🇪🇬" },
+  { id: "ee", name: "Estonia", emoji: "🇪🇪" },
+  { id: "et", name: "Ethiopia", emoji: "🇪🇹" },
+  { id: "fi", name: "Finland", emoji: "🇫🇮" },
+  { id: "fr", name: "France", emoji: "🇫🇷" },
+  { id: "ge", name: "Georgia", emoji: "🇬🇪" },
+  { id: "de", name: "Germany", emoji: "🇩🇪" },
+  { id: "gh", name: "Ghana", emoji: "🇬🇭" },
+  { id: "gr", name: "Greece", emoji: "🇬🇷" },
+  { id: "gt", name: "Guatemala", emoji: "🇬🇹" },
+  { id: "hn", name: "Honduras", emoji: "🇭🇳" },
+  { id: "hk", name: "Hong Kong", emoji: "🇭🇰" },
+  { id: "hu", name: "Hungary", emoji: "🇭🇺" },
+  { id: "is", name: "Iceland", emoji: "🇮🇸" },
+  { id: "in", name: "India", emoji: "🇮🇳" },
+  { id: "id", name: "Indonesia", emoji: "🇮🇩" },
+  { id: "ir", name: "Iran", emoji: "🇮🇷" },
+  { id: "iq", name: "Iraq", emoji: "🇮🇶" },
+  { id: "ie", name: "Ireland", emoji: "🇮🇪" },
+  { id: "il", name: "Israel", emoji: "🇮🇱" },
+  { id: "it", name: "Italy", emoji: "🇮🇹" },
+  { id: "jm", name: "Jamaica", emoji: "🇯🇲" },
+  { id: "jp", name: "Japan", emoji: "🇯🇵" },
+  { id: "jo", name: "Jordan", emoji: "🇯🇴" },
+  { id: "kz", name: "Kazakhstan", emoji: "🇰🇿" },
+  { id: "ke", name: "Kenya", emoji: "🇰🇪" },
+  { id: "kw", name: "Kuwait", emoji: "🇰🇼" },
+  { id: "lv", name: "Latvia", emoji: "🇱🇻" },
+  { id: "lb", name: "Lebanon", emoji: "🇱🇧" },
+  { id: "ly", name: "Libya", emoji: "🇱🇾" },
+  { id: "lt", name: "Lithuania", emoji: "🇱🇹" },
+  { id: "lu", name: "Luxembourg", emoji: "🇱🇺" },
+  { id: "my", name: "Malaysia", emoji: "🇲🇾" },
+  { id: "mx", name: "Mexico", emoji: "🇲🇽" },
+  { id: "md", name: "Moldova", emoji: "🇲🇩" },
+  { id: "mn", name: "Mongolia", emoji: "🇲🇳" },
+  { id: "me", name: "Montenegro", emoji: "🇲🇪" },
+  { id: "ma", name: "Morocco", emoji: "🇲🇦" },
+  { id: "np", name: "Nepal", emoji: "🇳🇵" },
+  { id: "nl", name: "Netherlands", emoji: "🇳🇱" },
+  { id: "nz", name: "New Zealand", emoji: "🇳🇿" },
+  { id: "ng", name: "Nigeria", emoji: "🇳🇬" },
+  { id: "kp", name: "N.Korea", emoji: "🇰🇵" },
+  { id: "no", name: "Norway", emoji: "🇳🇴" },
+  { id: "om", name: "Oman", emoji: "🇴🇲" },
+  { id: "pk", name: "Pakistan", emoji: "🇵🇰" },
+  { id: "pa", name: "Panama", emoji: "🇵🇦" },
+  { id: "py", name: "Paraguay", emoji: "🇵🇾" },
+  { id: "pe", name: "Peru", emoji: "🇵🇪" },
+  { id: "ph", name: "Philippines", emoji: "🇵🇭" },
+  { id: "pl", name: "Poland", emoji: "🇵🇱" },
+  { id: "pt", name: "Portugal", emoji: "🇵🇹" },
+  { id: "qa", name: "Qatar", emoji: "🇶🇦" },
+  { id: "ro", name: "Romania", emoji: "🇷🇴" },
+  { id: "ru", name: "Russia", emoji: "🇷🇺" },
+  { id: "sa", name: "Saudi", emoji: "🇸🇦" },
+  { id: "rs", name: "Serbia", emoji: "🇷🇸" },
+  { id: "sg", name: "Singapore", emoji: "🇸🇬" },
+  { id: "sk", name: "Slovakia", emoji: "🇸🇰" },
+  { id: "si", name: "Slovenia", emoji: "🇸🇮" },
+  { id: "za", name: "S.Africa", emoji: "🇿🇦" },
+  { id: "kr", name: "S.Korea", emoji: "🇰🇷" },
+  { id: "es", name: "Spain", emoji: "🇪🇸" },
+  { id: "lk", name: "Sri Lanka", emoji: "🇱🇰" },
+  { id: "se", name: "Sweden", emoji: "🇸🇪" },
+  { id: "ch", name: "Switzerland", emoji: "🇨🇭" },
+  { id: "sy", name: "Syria", emoji: "🇸🇾" },
+  { id: "tw", name: "Taiwan", emoji: "🇹🇼" },
+  { id: "th", name: "Thailand", emoji: "🇹🇭" },
+  { id: "tr", name: "Turkey", emoji: "🇹🇷" },
+  { id: "ua", name: "Ukraine", emoji: "🇺🇦" },
+  { id: "ae", name: "UAE", emoji: "🇦🇪" },
+  { id: "gb", name: "UK", emoji: "🇬🇧" },
+  { id: "us", name: "USA", emoji: "🇺🇸" },
+  { id: "uy", name: "Uruguay", emoji: "🇺🇾" },
+  { id: "uz", name: "Uzbekistan", emoji: "🇺🇿" },
+  { id: "ve", name: "Venezuela", emoji: "🇻🇪" },
+  { id: "vn", name: "Vietnam", emoji: "🇻🇳" },
+  { id: "ye", name: "Yemen", emoji: "🇾🇪" },
+] as const;
+
+const PLAYER_POOL = [
+  "Shadow", "Viper", "Ghost", "Raven", "Blaze", "Nova", "Kane",
+  "Rex", "Ace", "Wolf", "Storm", "Phoenix", "Drake", "Lynx", "Zero",
+  "Reaper", "Spectre", "Titan", "Cobra", "Hawk",
+];
+
 function generateTargetId(): string {
   return `tgt_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
 }
@@ -21,6 +138,7 @@ function findSpawnIndex(board: (Cell | null)[]): number | null {
     if (board[i] === null) empty.push(i);
   }
   if (empty.length === 0) return null;
+
   const preferred = empty.filter((i) => {
     const col = i % 6;
     return col === 2 || col === 3;
@@ -41,8 +159,27 @@ export function maybeSpawnTarget(s: GameState, now = Date.now()): GameState {
   ) {
     const idx = findSpawnIndex(s.board);
     if (idx !== null) {
-      const isNation = Math.random() < 0.55;
+      const isNation = Math.random() < 0.6;
       const id = generateTargetId();
+
+      let nationId: string | undefined;
+      let nationName: string | undefined;
+      let nationEmoji: string | undefined;
+      let playerName: string | undefined;
+      let playerId: number | undefined;
+      let label: string;
+
+      if (isNation) {
+        const nation = NATION_POOL[Math.floor(Math.random() * NATION_POOL.length)];
+        nationId = nation.id;
+        nationName = nation.name;
+        nationEmoji = nation.emoji;
+        label = nation.name;
+      } else {
+        playerName = PLAYER_POOL[Math.floor(Math.random() * PLAYER_POOL.length)];
+        playerId = Math.floor(Math.random() * 900000000) + 100000000;
+        label = playerName;
+      }
 
       const target: WarTarget = {
         id,
@@ -50,10 +187,10 @@ export function maybeSpawnTarget(s: GameState, now = Date.now()): GameState {
         boardIndex: idx,
         spawnedAt: now,
         expiresAt: now + TARGET_LIFETIME_MS,
-        nationId: isNation ? "BR" : undefined,
-        nationName: isNation ? "Brazil" : undefined,
-        playerId: !isNation ? 123456789 : undefined,
-        playerName: !isNation ? "EnemySoldier" : undefined,
+        nationId,
+        nationName,
+        playerId,
+        playerName,
       };
 
       const board = [...s.board];
@@ -64,8 +201,10 @@ export function maybeSpawnTarget(s: GameState, now = Date.now()): GameState {
         isTarget: true,
         targetType: target.type,
         targetId: id,
-        targetLabel: isNation ? "BRAZIL" : "@EnemySoldier",
-      };
+        targetLabel: label,
+        // store emoji for rendering
+        ...(isNation ? { nationId, nationEmoji } : {}),
+      } as Cell;
 
       targets.push(target);
       mergesSince = 0;
@@ -97,7 +236,12 @@ export function attackTarget(
   s: GameState,
   boardIndex: number,
   now = Date.now(),
-): { nextState: GameState; ok: boolean; reason?: string; rewardText?: string } {
+): {
+  nextState: GameState;
+  ok: boolean;
+  reason?: string;
+  rewardText?: string;
+} {
   if (!s.warMode?.active) {
     return { nextState: s, ok: false, reason: "War Mode not active" };
   }
@@ -114,6 +258,7 @@ export function attackTarget(
   const hasTokens =
     s.wardogTokens >= TARGET_ATTACK_TOKEN_COST ||
     s.warcatTokens >= TARGET_ATTACK_TOKEN_COST;
+
   if (!hasTokens) {
     return { nextState: s, ok: false, reason: "Need tokens — top up to strike!" };
   }
@@ -123,6 +268,7 @@ export function attackTarget(
     return { nextState: s, ok: false, reason: "Target expired" };
   }
 
+  // Spend tokens
   let wardog = s.wardogTokens;
   let warcat = s.warcatTokens;
   if (wardog >= TARGET_ATTACK_TOKEN_COST) {
@@ -131,10 +277,12 @@ export function attackTarget(
     warcat -= TARGET_ATTACK_TOKEN_COST;
   }
 
-  const reward = target.type === "nation" ? TARGET_NATION_REWARD : TARGET_PLAYER_REWARD;
+  const reward =
+    target.type === "nation" ? TARGET_NATION_REWARD : TARGET_PLAYER_REWARD;
 
   const board = [...s.board];
   board[boardIndex] = null;
+
   const targets = s.warMode.targets.filter((t) => t.id !== target.id);
 
   let frontLine = s.warMode.frontLine;
@@ -170,6 +318,7 @@ export function attackTarget(
 
 export function cleanExpiredTargets(s: GameState, now = Date.now()): GameState {
   if (!s.warMode?.active) return s;
+
   const alive = (s.warMode.targets || []).filter((t) => t.expiresAt > now);
   if (alive.length === (s.warMode.targets || []).length) return s;
 
@@ -183,6 +332,9 @@ export function cleanExpiredTargets(s: GameState, now = Date.now()): GameState {
   return {
     ...s,
     board,
-    warMode: { ...s.warMode, targets: alive },
+    warMode: {
+      ...s.warMode,
+      targets: alive,
+    },
   };
 }

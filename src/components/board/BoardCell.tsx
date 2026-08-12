@@ -39,6 +39,9 @@ export function UnitChip({
   imageUrl,
   variant,
   large = false,
+  targetType,
+  targetLabel,
+  nationEmoji,
 }: {
   tier: number;
   faction: Faction | "hybrid" | "target";
@@ -47,41 +50,67 @@ export function UnitChip({
   imageUrl?: string;
   variant?: number;
   large?: boolean;
+  targetType?: "nation" | "player";
+  targetLabel?: string;
+  nationEmoji?: string;
 }) {
-  // Live Target rendering
+  // ── LIVE TARGET (emoji flags) ────────────────────────────────
   if (faction === "target") {
+    const isNation = targetType === "nation";
+    const shortName = (targetLabel || (isNation ? "NATION" : "PLAYER"))
+      .replace("@", "")
+      .slice(0, 9);
+
     return (
       <motion.div
         className={cn(
-          "relative flex aspect-square flex-col items-center justify-center overflow-hidden rounded-md border-2 border-red-500 bg-black",
-          large ? "h-full w-full" : "h-[92%] w-[92%]",
+          "relative flex aspect-square flex-col items-center justify-center overflow-hidden rounded-md border-2",
+          isNation ? "border-red-500 bg-zinc-950" : "border-amber-500 bg-zinc-950",
+          large ? "h-full w-full" : "h-[94%] w-[94%]",
         )}
         animate={{
-          boxShadow: [
-            "0 0 0 0 rgba(239,68,68,0.55)",
-            "0 0 0 10px rgba(239,68,68,0)",
-          ],
+          boxShadow: isNation
+            ? [
+                "0 0 0 0 rgba(239,68,68,0.55)",
+                "0 0 0 7px rgba(239,68,68,0)",
+              ]
+            : [
+                "0 0 0 0 rgba(245,158,11,0.55)",
+                "0 0 0 7px rgba(245,158,11,0)",
+              ],
         }}
-        transition={{ duration: 1.1, repeat: Infinity }}
+        transition={{ duration: 1.15, repeat: Infinity }}
       >
-        <div className={cn(large ? "text-4xl" : "text-xl")}>
-          {tier === 1 ? "🏳️" : "👤"}
+        {/* Big emoji */}
+        <div className={cn("leading-none", large ? "text-3xl" : "text-[22px]")}>
+          {isNation ? nationEmoji || "🏳️" : "👤"}
         </div>
+
+        {/* Short readable name */}
         <div
           className={cn(
-            "mt-0.5 px-0.5 text-center font-black uppercase leading-tight text-white",
-            large ? "text-xs" : "text-[0.5rem]",
+            "mt-0.5 w-full truncate px-0.5 text-center font-black uppercase leading-none tracking-tight text-white",
+            large ? "text-[11px]" : "text-[9px]",
           )}
         >
-          TARGET
+          {shortName}
         </div>
-        <div className={cn("font-bold text-red-400", large ? "text-xs" : "text-[0.45rem]")}>
-          STRIKE
+
+        {/* Action label */}
+        <div
+          className={cn(
+            "mt-0.5 font-bold leading-none",
+            isNation ? "text-red-400" : "text-amber-400",
+            large ? "text-[10px]" : "text-[8px]",
+          )}
+        >
+          {isNation ? "NUKE" : "STRIKE"}
         </div>
       </motion.div>
     );
   }
 
+  // ── HYBRID ───────────────────────────────────────────────────
   if (faction === "hybrid") {
     if (imageUrl) {
       void cacheRemoteImage(imageUrl);
@@ -144,6 +173,7 @@ export function UnitChip({
     );
   }
 
+  // ── NORMAL UNIT ──────────────────────────────────────────────
   const unit = getUnit(faction as Faction, tier, id, variant);
   const v =
     typeof variant === "number"
@@ -277,7 +307,7 @@ export function BoardCell({
         "relative z-10 flex aspect-square items-center justify-center overflow-hidden rounded-lg border transition-all duration-150",
         !cell && "border-zinc-900 bg-black",
         cell && !cell.isTarget && "border-black bg-white shadow-[inset_0_0_0_1px_rgba(0,0,0,0.06)]",
-        cell?.isTarget && "border-red-500 bg-black",
+        cell?.isTarget && "border-transparent bg-transparent",
         isDrag && "opacity-35 scale-95",
         mergeOk && "ring-2 ring-white scale-[1.03]",
         clash && "ring-2 ring-white/80 scale-[1.03]",
@@ -312,15 +342,11 @@ export function BoardCell({
             seed={cell.seed}
             imageUrl={cell.imageUrl}
             variant={cell.variant}
+            targetType={cell.targetType}
+            targetLabel={cell.targetLabel}
+            nationEmoji={(cell as any).nationEmoji}
           />
         </motion.div>
-      )}
-
-      {/* Extra label for targets */}
-      {cell?.isTarget && (
-        <div className="pointer-events-none absolute bottom-0.5 left-0 right-0 z-30 text-center text-[8px] font-black uppercase text-red-400">
-          {cell.targetLabel || (cell.targetType === "nation" ? "NUKE" : "STRIKE")}
-        </div>
       )}
 
       {cellBursts.map((b) => (
