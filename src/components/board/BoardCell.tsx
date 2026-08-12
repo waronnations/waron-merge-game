@@ -3,7 +3,7 @@ import { motion } from "framer-motion";
 import { getUnit, type Faction } from "@/lib/units";
 import { cn } from "@/lib/utils";
 import { cacheRemoteImage } from "@/lib/preload-units";
-import type { GameState } from "@/lib/game-state";
+import type { GameState } from "@/lib/game/types";
 import {
   VARIANT_COUNT,
   EXPLOSION_SHROOM_COLORS,
@@ -26,7 +26,7 @@ export interface Burst {
   key: number;
   idx: number;
   tier: number;
-  faction: Faction | "hybrid";
+  faction: Faction | "hybrid" | "target";
   token?: "wardog" | "warcat";
   amount?: number;
 }
@@ -41,13 +41,47 @@ export function UnitChip({
   large = false,
 }: {
   tier: number;
-  faction: Faction | "hybrid";
+  faction: Faction | "hybrid" | "target";
   id?: number;
   seed?: string;
   imageUrl?: string;
   variant?: number;
   large?: boolean;
 }) {
+  // Live Target rendering
+  if (faction === "target") {
+    return (
+      <motion.div
+        className={cn(
+          "relative flex aspect-square flex-col items-center justify-center overflow-hidden rounded-md border-2 border-red-500 bg-black",
+          large ? "h-full w-full" : "h-[92%] w-[92%]",
+        )}
+        animate={{
+          boxShadow: [
+            "0 0 0 0 rgba(239,68,68,0.55)",
+            "0 0 0 10px rgba(239,68,68,0)",
+          ],
+        }}
+        transition={{ duration: 1.1, repeat: Infinity }}
+      >
+        <div className={cn(large ? "text-4xl" : "text-xl")}>
+          {tier === 1 ? "🏳️" : "👤"}
+        </div>
+        <div
+          className={cn(
+            "mt-0.5 px-0.5 text-center font-black uppercase leading-tight text-white",
+            large ? "text-xs" : "text-[0.5rem]",
+          )}
+        >
+          TARGET
+        </div>
+        <div className={cn("font-bold text-red-400", large ? "text-xs" : "text-[0.45rem]")}>
+          STRIKE
+        </div>
+      </motion.div>
+    );
+  }
+
   if (faction === "hybrid") {
     if (imageUrl) {
       void cacheRemoteImage(imageUrl);
@@ -110,7 +144,7 @@ export function UnitChip({
     );
   }
 
-  const unit = getUnit(faction, tier, id, variant);
+  const unit = getUnit(faction as Faction, tier, id, variant);
   const v =
     typeof variant === "number"
       ? Math.abs(Math.floor(variant)) % VARIANT_COUNT
@@ -147,7 +181,6 @@ export function UnitChip({
         }}
       />
 
-      {/* Variant indicator dots – grayscale */}
       <div className="absolute left-0.5 top-0.5 z-20 flex gap-0.5">
         {Array.from({ length: VARIANT_COUNT }).map((_, i) => (
           <div
@@ -180,7 +213,7 @@ export function MergeBurst({
   faction,
 }: {
   tier: number;
-  faction: Faction | "hybrid";
+  faction: Faction | "hybrid" | "target";
 }) {
   const color = "#ffffff";
   return (
@@ -243,14 +276,15 @@ export function BoardCell({
       className={cn(
         "relative z-10 flex aspect-square items-center justify-center overflow-hidden rounded-lg border transition-all duration-150",
         !cell && "border-zinc-900 bg-black",
-        cell && "border-black bg-white shadow-[inset_0_0_0_1px_rgba(0,0,0,0.06)]",
+        cell && !cell.isTarget && "border-black bg-white shadow-[inset_0_0_0_1px_rgba(0,0,0,0.06)]",
+        cell?.isTarget && "border-red-500 bg-black",
         isDrag && "opacity-35 scale-95",
         mergeOk && "ring-2 ring-white scale-[1.03]",
         clash && "ring-2 ring-white/80 scale-[1.03]",
         dropOk && !mergeOk && !clash && "ring-1 ring-zinc-400/60",
       )}
       style={
-        cell
+        cell && !cell.isTarget
           ? {
               boxShadow:
                 side === "dog"
@@ -280,6 +314,13 @@ export function BoardCell({
             variant={cell.variant}
           />
         </motion.div>
+      )}
+
+      {/* Extra label for targets */}
+      {cell?.isTarget && (
+        <div className="pointer-events-none absolute bottom-0.5 left-0 right-0 z-30 text-center text-[8px] font-black uppercase text-red-400">
+          {cell.targetLabel || (cell.targetType === "nation" ? "NUKE" : "STRIKE")}
+        </div>
       )}
 
       {cellBursts.map((b) => (

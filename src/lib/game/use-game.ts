@@ -1,7 +1,4 @@
 // src/lib/game/use-game.ts
-// The client useGame hook: wires together the pure state-transition logic
-// from merge/spawn/hybrid/daily/idle/energy/server-reconcile into React
-// state + optimistic-update/rollback semantics.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { MAX_TIER, type Faction } from "@/lib/units";
 import {
@@ -67,6 +64,8 @@ import {
   deployUnit,
   activateHybridAbility,
   endWarMode,
+  afterMergeWarMode,
+  markTargetTutorialSeen,
 } from "./war-mode";
 import type { HybridCommanderAbilityId } from "@/lib/constants/war-mode";
 
@@ -81,8 +80,6 @@ export function useGame() {
 
   const boardRevisionRef = useRef(0);
   const localBoardLockUntilRef = useRef(0);
-
-  /** Cached Claim Treasury zone for dynamic energy regen (default yellow = 1×). */
   const treasuryZoneRef = useRef<EnergyTreasuryZone>("yellow");
 
   const bumpBoardRevision = () => {
@@ -107,10 +104,8 @@ export function useGame() {
     if (hydrated) save(state);
   }, [state, hydrated]);
 
-  // Refresh treasury zone periodically so energy regen tracks Claim Treasury health
   useEffect(() => {
     let cancelled = false;
-
     const refreshZone = async () => {
       try {
         const snap = await getTreasuryHealthFn();
@@ -124,10 +119,9 @@ export function useGame() {
           treasuryZoneRef.current = snap.zone;
         }
       } catch {
-        /* offline — keep last known zone */
+        /* offline */
       }
     };
-
     void refreshZone();
     const int = setInterval(() => void refreshZone(), ZONE_REFRESH_MS);
     return () => {
@@ -149,7 +143,6 @@ export function useGame() {
     return () => clearInterval(int);
   }, []);
 
-  // Passive energy regen — driven by treasury zone
   useEffect(() => {
     const interval = setInterval(() => {
       setState((s) => {
@@ -179,7 +172,6 @@ export function useGame() {
 
   useEffect(() => {
     if (!hydrated) return;
-
     const calculateIdle = () => {
       setState((s) => {
         const next = calculateIdleUpdate(s);
@@ -188,7 +180,6 @@ export function useGame() {
         return next;
       });
     };
-
     calculateIdle();
     const onVis = () => {
       if (document.visibilityState === "visible") calculateIdle();
@@ -220,30 +211,28 @@ export function useGame() {
       if (!a || !b) return { ok: false };
       if (s.energy < ENERGY_PER_MERGE) return { ok: false };
 
-      // 1. Classic Hybrid Clash (T5 dog + T5 cat)
+      // 1. Classic Hybrid Clash
       const clash = computeHybridClash(s, from, to, comboCount);
       if (clash) {
-        const { nextState, dogId, catId, explosionKey } = clash;
+        let nextState = clash.nextState;
+        nextState = afterMergeWarMode(nextState);
         stateRef.current = nextState;
         setState(nextState);
         bumpBoardRevision();
 
         setTimeout(() => {
           setState((prev) => {
-            // Stronger guards against stale / random modal
-            if (prev.explosion?.key !== explosionKey) return prev;
-            if (prev.pendingHybrid) return prev; // already handled
-            // Board must still be empty at the clash positions
-            if (prev.board[from] !== null || prev.board[to] !== null)
-              return prev;
+            if (prev.explosion?.key !== clash.explosionKey) return prev;
+            if (prev.pendingHybrid) return prev;
+            if (prev.board[from] !== null || prev.board[to] !== null) return prev;
 
             const next = {
               ...prev,
               explosion: null,
               pendingHybrid: {
                 id: prev.nextId,
-                parentDogId: dogId,
-                parentCatId: catId,
+                parentDogId: clash.dogId,
+                parentCatId: clash.catId,
                 from,
                 to,
               },
@@ -257,27 +246,23 @@ export function useGame() {
         return clash.result;
       }
 
-      // 2. Hybrid ↔ Hybrid merge (any same-tier hybrids)
-      const hybridMerge = computeHybridMerge(
-        s,
-        from,
-        to,
-        comboMult,
-        comboCount,
-      );
+      // 2. Hybrid ↔ Hybrid
+      const hybridMerge = computeHybridMerge(s, from, to, comboMult, comboCount);
       if (hybridMerge) {
-        stateRef.current = hybridMerge.nextState;
-        setState(hybridMerge.nextState);
+        let nextState = afterMergeWarMode(hybridMerge.nextState);
+        stateRef.current = nextState;
+        setState(nextState);
         bumpBoardRevision();
         return hybridMerge.result;
       }
 
-      // 3. Normal same-faction merge
+      // 3. Normal merge
       const merged = computeNormalMerge(s, from, to, comboMult, comboCount);
       if (!merged) return { ok: false };
 
-      stateRef.current = merged.nextState;
-      setState(merged.nextState);
+      let nextState = afterMergeWarMode(merged.nextState);
+      stateRef.current = nextState;
+      setState(nextState);
       bumpBoardRevision();
       return merged.result;
     },
@@ -289,10 +274,10 @@ export function useGame() {
       if (from === to) return s;
       const a = s.board[from];
       if (!a) return s;
-      if (a.faction !== "hybrid" && !isCorrectSide(to, a.faction)) return s;
+      if (a.faction !== "hybrid" && a.faction !== "target" && !isCorrectSide(to, a.faction)) return s;
 
       const b = s.board[to];
-      if (b && b.faction !== "hybrid" && !isCorrectSide(from, b.faction))
+      if (b && b.faction !== "hybrid" && b.faction !== "target" && !isCorrectSide(from, b.faction))
         return s;
 
       if (a.tier >= MAX_TIER && a.faction !== "hybrid") return s;
@@ -326,7 +311,6 @@ export function useGame() {
     };
   }, []);
 
-  /** Rolls back an optimistic deploy the server rejected. */
   const rollbackSpawn = useCallback((targetIdx: number, unitId: number) => {
     setState((s) => {
       const next = computeRollbackSpawn(s, targetIdx, unitId);
@@ -353,7 +337,6 @@ export function useGame() {
     });
   }, []);
 
-  /** Sacrifice a hybrid already sitting on the board. */
   const sacrificeBoardHybrid = useCallback(
     (
       idx: number,
@@ -378,7 +361,6 @@ export function useGame() {
     [],
   );
 
-  /** Mass sacrifice an entire conquered side */
   const sacrificeConqueredSide = useCallback(
     (
       side: "dog" | "cat",
@@ -492,9 +474,6 @@ export function useGame() {
     };
   }, []);
 
-  /**
-   * @deprecated – free personal nuke is removed.
-   */
   const useNuke = useCallback(() => {
     console.warn(
       "[WarOnNations] useNuke is deprecated. Use launchNuke(targetNationId) instead.",
@@ -541,7 +520,7 @@ export function useGame() {
     });
   }, []);
 
-  // ── WAR MODE ACTIONS ──────────────────────────────────────────────
+  // ── WAR MODE + TARGETS ──────────────────────────────────────────
   const tryEnterWarMode = useCallback(() => {
     const s = stateRef.current;
     const next = enterWarMode(s);
@@ -577,6 +556,12 @@ export function useGame() {
     bumpBoardRevision();
   }, []);
 
+  const markTargetTutorialSeenFn = useCallback(() => {
+    const next = markTargetTutorialSeen(stateRef.current);
+    stateRef.current = next;
+    setState(next);
+  }, []);
+
   return {
     state,
     hydrated,
@@ -610,5 +595,6 @@ export function useGame() {
     tryActivateAbility,
     forceEndWarMode,
     canEnterWarMode: () => canEnterWarMode(stateRef.current),
+    markTargetTutorialSeen: markTargetTutorialSeenFn,
   };
 }

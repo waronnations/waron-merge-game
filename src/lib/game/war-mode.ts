@@ -1,10 +1,9 @@
 // src/lib/game/war-mode.ts
 /**
- * Pure War Mode logic — no React, no side effects.
- * Fully testable and server-authoritative ready.
+ * Pure War Mode logic + Live Targets integration.
  */
 
-import type { GameState, Cell, WarModeState } from "./types";
+import type { GameState, WarModeState } from "./types";
 import {
   WAR_MODE_DURATION_MS,
   WAR_MODE_ENERGY_COST_TO_ENTER,
@@ -22,6 +21,11 @@ import {
   type HybridCommanderAbilityId,
 } from "@/lib/constants/war-mode";
 import { updateConquerFlags } from "./helpers";
+import {
+  maybeSpawnTarget,
+  cleanExpiredTargets,
+  attackTarget,
+} from "./war-targets";
 
 export function createInitialWarMode(): WarModeState {
   return {
@@ -33,6 +37,9 @@ export function createInitialWarMode(): WarModeState {
     lastPassiveAt: 0,
     activeAbilities: [],
     cooldownUntil: 0,
+    targets: [],
+    mergesSinceLastTarget: 0,
+    hasSeenTargetTutorial: false,
   };
 }
 
@@ -58,6 +65,9 @@ export function enterWarMode(s: GameState, now = Date.now()): GameState | null {
       controlGenerated: 0,
       lastPassiveAt: now,
       activeAbilities: [],
+      targets: [],
+      mergesSinceLastTarget: 0,
+      hasSeenTargetTutorial: s.warMode?.hasSeenTargetTutorial ?? false,
     },
   };
 }
@@ -69,19 +79,22 @@ export function tickWarMode(s: GameState, now = Date.now()): GameState {
     return endWarMode(s, now);
   }
 
-  let frontLine = s.warMode.frontLine;
-  let controlGenerated = s.warMode.controlGenerated;
-  let lastPassiveAt = s.warMode.lastPassiveAt;
+  // Clean expired targets first
+  let next = cleanExpiredTargets(s, now);
+
+  let frontLine = next.warMode.frontLine;
+  let controlGenerated = next.warMode.controlGenerated;
+  let lastPassiveAt = next.warMode.lastPassiveAt;
 
   const elapsed = now - lastPassiveAt;
   if (elapsed >= 10_000) {
     const ticks = Math.floor(elapsed / 10_000);
 
-    if (s.dogSideConquered) {
+    if (next.dogSideConquered) {
       frontLine = Math.max(0, frontLine - CONQUERED_PASSIVE_CONTROL * ticks);
       controlGenerated += CONQUERED_PASSIVE_CONTROL * ticks;
     }
-    if (s.catSideConquered) {
+    if (next.catSideConquered) {
       frontLine = Math.min(FRONT_LINE_MAX, frontLine + CONQUERED_PASSIVE_CONTROL * ticks);
       controlGenerated += CONQUERED_PASSIVE_CONTROL * ticks;
     }
@@ -89,12 +102,12 @@ export function tickWarMode(s: GameState, now = Date.now()): GameState {
     lastPassiveAt = now - (elapsed % 10_000);
   }
 
-  const activeAbilities = s.warMode.activeAbilities.filter((a) => a.endsAt > now);
+  const activeAbilities = next.warMode.activeAbilities.filter((a) => a.endsAt > now);
 
   return {
-    ...s,
+    ...next,
     warMode: {
-      ...s.warMode,
+      ...next.warMode,
       frontLine,
       controlGenerated,
       lastPassiveAt,
@@ -108,7 +121,6 @@ export function applyMergeControl(
   tier: number,
   isPerfectVariant: boolean,
   isHybrid: boolean,
-  now = Date.now(),
 ): GameState {
   if (!s.warMode?.active) return s;
 
@@ -125,6 +137,14 @@ export function applyMergeControl(
   };
 }
 
+/** Call this after every successful merge */
+export function afterMergeWarMode(s: GameState, now = Date.now()): GameState {
+  if (!s.warMode?.active) return s;
+  let next = tickWarMode(s, now);
+  next = maybeSpawnTarget(next, now);
+  return next;
+}
+
 export function deployUnit(
   s: GameState,
   index: number,
@@ -139,6 +159,13 @@ export function deployUnit(
 
   const cell = s.board[index];
   if (!cell) return { nextState: s, ok: false, reason: "Empty cell" };
+
+  // If it's a target, treat deploy as an attack
+  if (cell.isTarget) {
+    const result = attackTarget(s, index, now);
+    return { nextState: result.nextState, ok: result.ok, reason: result.reason };
+  }
+
   if (cell.tier < 4 && cell.faction !== "hybrid") {
     return { nextState: s, ok: false, reason: "Only tier 4+ or hybrids can deploy" };
   }
@@ -240,6 +267,7 @@ export function endWarMode(s: GameState, now = Date.now()): GameState {
       ...createInitialWarMode(),
       cooldownUntil: now + WAR_MODE_COOLDOWN_MS,
       victory: isVictory,
+      hasSeenTargetTutorial: s.warMode.hasSeenTargetTutorial,
     },
   };
 }
@@ -265,6 +293,17 @@ export function applyControlDrain(
     warMode: {
       ...s.warMode,
       frontLine,
+    },
+  };
+}
+
+export function markTargetTutorialSeen(s: GameState): GameState {
+  if (!s.warMode) return s;
+  return {
+    ...s,
+    warMode: {
+      ...s.warMode,
+      hasSeenTargetTutorial: true,
     },
   };
 }

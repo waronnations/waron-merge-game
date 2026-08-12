@@ -5,9 +5,11 @@ import type { GiftBoxId } from "@/lib/constants/gifts";
 import type { ExplosionColor } from "@/lib/constants";
 import type { HybridCommanderAbilityId } from "@/lib/constants/war-mode";
 
+export type WarTargetType = "nation" | "player";
+
 export interface Cell {
   id: number;
-  faction: Faction | "hybrid";
+  faction: Faction | "hybrid" | "target";
   tier: number;
   /** Visual unit line within the tier (0–2). Same variant required to merge. */
   variant?: number;
@@ -18,6 +20,12 @@ export interface Cell {
   imageUrl?: string;
   /** War Mode: is this unit currently deployed off-board? */
   deployedUntil?: number;
+
+  // Live Target fields
+  isTarget?: boolean;
+  targetType?: WarTargetType;
+  targetId?: string;
+  targetLabel?: string;
 }
 
 export interface HybridNFT {
@@ -39,6 +47,21 @@ export interface PendingHybrid {
   to: number;
 }
 
+export interface WarTarget {
+  id: string;
+  type: WarTargetType;
+  /** For nation targets */
+  nationId?: string;
+  nationName?: string;
+  /** For player targets */
+  playerId?: number;
+  playerName?: string;
+  /** Board index where it currently sits */
+  boardIndex: number;
+  spawnedAt: number;
+  expiresAt: number;
+}
+
 export interface WarModeState {
   active: boolean;
   startedAt: number;
@@ -58,6 +81,11 @@ export interface WarModeState {
   cooldownUntil: number;
   /** Whether this session was won (front line held at extreme) */
   victory?: boolean;
+
+  // Live Targets
+  targets: WarTarget[];
+  mergesSinceLastTarget: number;
+  hasSeenTargetTutorial: boolean;
 }
 
 export interface GameState {
@@ -100,16 +128,17 @@ export interface GameState {
   isTerrorist?: boolean;
   lastNukeTargetId?: number | null;
 
+  /** Inventory of unopened gift boxes */
   giftBoxes?: Partial<Record<GiftBoxId, number>>;
-
-  // Board Conquer system
-  dogSideConquered: boolean;
-  catSideConquered: boolean;
 
   // Daily / tasks (kept for compatibility)
   tasks?: any[];
   dailyQuests?: any[];
   dailyQuestsDate?: number;
+
+  // Board Conquer system
+  dogSideConquered: boolean;
+  catSideConquered: boolean;
 
   // WAR MODE
   warMode: WarModeState;
@@ -125,4 +154,42 @@ export interface MergeResult {
   unlocked?: string[];
   gloryGained?: number;
   variantPerfect?: boolean;
+}
+
+export interface Task {
+  id: string;
+  title?: string;
+  desc?: string;
+  done?: boolean;
+  claimed?: boolean;
+  progress?: number;
+  target?: number;
+  [key: string]: any;
+}
+
+export interface DailyQuest {
+  id: string;
+  title: string;
+  desc: string;
+  target: number;
+  progress: number;
+  claimed: boolean;
+  reward?: number;
+  wardog?: number;
+  warcat?: number;
+  energy?: number;
+  [key: string]: any;
+}
+
+export interface Referral {
+  id?: string;
+  code?: string;
+  [key: string]: any;
+}
+
+export interface IdleReward {
+  glory?: number;
+  energy?: number;
+  tokens?: number;
+  [key: string]: any;
 }
