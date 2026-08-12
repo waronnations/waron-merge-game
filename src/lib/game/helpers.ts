@@ -11,6 +11,7 @@ import {
 } from "@/lib/constants";
 import { getActiveEvents, getEnergyRegenMultiplier } from "@/lib/events";
 import type { Cell, DailyQuest, GameState, Task } from "./types";
+import { createInitialWarMode } from "./war-mode";
 
 export const STORAGE_KEY = "waron-merge-v2";
 
@@ -220,6 +221,7 @@ export function sanitizeBoard(board: unknown): (Cell | null)[] {
     if (typeof c.parentDogId === "number") cell.parentDogId = c.parentDogId;
     if (typeof c.parentCatId === "number") cell.parentCatId = c.parentCatId;
     if (c.isHybrid) cell.isHybrid = true;
+    if (typeof c.deployedUntil === "number") cell.deployedUntil = c.deployedUntil;
 
     out[i] = cell;
   }
@@ -389,11 +391,11 @@ export function applyOfflineEnergyRegen(s: GameState): GameState {
 
 export function bumpDailyQuest(
   s: GameState,
-  type: "merge" | "spawn" | "tierUp",
+  type: "merge" | "spawn" | "tierUp" | "hybridMerge",
   amount = 1,
   _tier?: number,
 ): GameState {
-  const quests = s.dailyQuests.map((q) => {
+  const quests = (s.dailyQuests || []).map((q) => {
     if (q.claimed) return q;
     if (type === "merge" && q.id.startsWith("dq_merge")) {
       return { ...q, progress: Math.min(q.target, q.progress + amount) };
@@ -449,6 +451,7 @@ export function initialState(): GameState {
     achievements: [],
     dogSideConquered: false,
     catSideConquered: false,
+    warMode: createInitialWarMode(),
   };
 }
 
@@ -466,9 +469,13 @@ export function load(): GameState {
     merged.board = sanitizeBoard(merged.board);
 
     // CRITICAL: never restore a pending hybrid / explosion from storage
-    // (this was the main cause of the random "Legendary Hybrid Born" modal)
     merged.pendingHybrid = null;
     merged.explosion = null;
+
+    // Ensure warMode always exists
+    if (!merged.warMode) {
+      merged.warMode = createInitialWarMode();
+    }
 
     return applyOfflineEnergyRegen(merged);
   } catch {

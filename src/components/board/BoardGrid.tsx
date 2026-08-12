@@ -5,9 +5,10 @@ import {
   ENERGY_PER_MERGE,
   SPAWN_ENERGY,
   ENERGY_REGEN_MS,
-  type GameState,
-} from "@/lib/game-state";
+} from "@/lib/constants";
+import type { GameState } from "@/lib/game/types";
 import { BoardCell, type Burst } from "@/components/board/BoardCell";
+import { DeployButton } from "@/components/war/DeployButton";
 
 export function BoardGrid({
   boardRef,
@@ -26,6 +27,8 @@ export function BoardGrid({
   onPointerUp,
   onPointerCancel,
   onBoardPointerLeave,
+  onDeployUnit,
+  warModeActive = false,
 }: {
   boardRef: React.RefObject<HTMLDivElement | null>;
   board: GameState["board"];
@@ -43,6 +46,8 @@ export function BoardGrid({
   onPointerUp: () => void;
   onPointerCancel: () => void;
   onBoardPointerLeave: () => void;
+  onDeployUnit?: (index: number) => void;
+  warModeActive?: boolean;
 }) {
   const [regenSeconds, setRegenSeconds] = useState(0);
 
@@ -74,7 +79,7 @@ export function BoardGrid({
       }}
       onPointerLeave={onBoardPointerLeave}
     >
-      {/* Subtle left / right side distinction (grayscale only) */}
+      {/* Subtle left / right side distinction */}
       <div
         className="pointer-events-none absolute inset-y-2 left-2 z-0 rounded-l-xl"
         style={{
@@ -90,7 +95,7 @@ export function BoardGrid({
         }}
       />
 
-      {/* CENTER DIVIDER – pure white/gray */}
+      {/* CENTER DIVIDER */}
       <div
         className="pointer-events-none absolute inset-y-3 z-20"
         style={{ left: "50%", transform: "translateX(-50%)" }}
@@ -125,28 +130,38 @@ export function BoardGrid({
         const side = getSide(i);
 
         return (
-          <BoardCell
-            key={i}
-            index={i}
-            cell={cell}
-            isDrag={isDrag}
-            isHover={isHover}
-            mergeOk={mergeOk}
-            dropOk={dropOk}
-            clash={clash}
-            side={side}
-            bursts={bursts}
-            explosion={state.explosion}
-            allowHtml5Drag={allowHtml5Drag}
-            onPointerDown={(e) => onPointerDown(i, e)}
-            onPointerMove={onPointerMove}
-            onPointerUp={onPointerUp}
-            onPointerCancel={onPointerCancel}
-          />
+          <div key={i} className="relative">
+            <BoardCell
+              index={i}
+              cell={cell}
+              isDrag={isDrag}
+              isHover={isHover}
+              mergeOk={mergeOk}
+              dropOk={dropOk}
+              clash={clash}
+              side={side}
+              bursts={bursts}
+              explosion={state.explosion}
+              allowHtml5Drag={allowHtml5Drag}
+              onPointerDown={(e) => onPointerDown(i, e)}
+              onPointerMove={onPointerMove}
+              onPointerUp={onPointerUp}
+              onPointerCancel={onPointerCancel}
+            />
+            {onDeployUnit && (
+              <DeployButton
+                cell={cell}
+                index={i}
+                warModeActive={warModeActive}
+                energy={state.energy}
+                onDeploy={onDeployUnit}
+              />
+            )}
+          </div>
         );
       })}
 
-      {/* Low energy overlay – monochrome */}
+      {/* Low energy overlay */}
       {state.energy < ENERGY_PER_MERGE && (
         <div className="pointer-events-auto absolute inset-0 z-40 flex flex-col items-center justify-center rounded-2xl bg-black/85 backdrop-blur-[3px]">
           <div

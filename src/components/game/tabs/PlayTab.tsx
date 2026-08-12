@@ -1,6 +1,8 @@
 // src/components/game/tabs/PlayTab.tsx
 import { MergeBoard, type PayToken } from "@/components/MergeBoard";
-import type { GameState } from "@/lib/game-state";
+import { WarModeOverlay } from "@/components/war/WarModeOverlay";
+import type { GameState } from "@/lib/game/types";
+import type { HybridCommanderAbilityId } from "@/lib/constants/war-mode";
 
 export function PlayTab({
   state,
@@ -11,6 +13,12 @@ export function PlayTab({
   canRecoverWardog,
   canRecoverWarcat,
   onSacrificeHybrid,
+  // War Mode
+  onEnterWarMode,
+  onDeployUnit,
+  onActivateAbility,
+  onForceEndWarMode,
+  canEnterWarMode,
 }: {
   state: GameState;
   onMerge: (
@@ -28,17 +36,36 @@ export function PlayTab({
   canRecoverWardog: boolean;
   canRecoverWarcat: boolean;
   onSacrificeHybrid: (idx: number) => void;
+  // War Mode
+  onEnterWarMode: () => void;
+  onDeployUnit: (index: number) => void;
+  onActivateAbility: (id: HybridCommanderAbilityId) => void;
+  onForceEndWarMode: () => void;
+  canEnterWarMode: boolean;
 }) {
   return (
-    <MergeBoard
-      state={state}
-      onMerge={onMerge}
-      onSwap={onSwap}
-      onSpawn={onSpawn}
-      onRecover={onRecover}
-      canRecoverWardog={canRecoverWardog}
-      canRecoverWarcat={canRecoverWarcat}
-      onSacrificeHybrid={onSacrificeHybrid}
-    />
+    <div className="flex flex-col gap-0">
+      <WarModeOverlay
+        warMode={state.warMode}
+        energy={state.energy}
+        onEnter={onEnterWarMode}
+        onDeploy={onDeployUnit}
+        onActivateAbility={onActivateAbility}
+        onForceEnd={onForceEndWarMode}
+        canEnter={canEnterWarMode}
+      />
+
+      <MergeBoard
+        state={state}
+        onMerge={onMerge}
+        onSwap={onSwap}
+        onSpawn={onSpawn}
+        onRecover={onRecover}
+        canRecoverWardog={canRecoverWardog}
+        canRecoverWarcat={canRecoverWarcat}
+        onSacrificeHybrid={onSacrificeHybrid}
+        onDeployUnit={onDeployUnit}
+      />
+    </div>
   );
 }

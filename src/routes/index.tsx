@@ -4,7 +4,8 @@ import { useEffect, useState, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Toaster, toast } from "sonner";
 
-import { useGame, type GameState, MAX_ENERGY } from "@/lib/game-state";
+import { useGame } from "@/lib/game/use-game";
+import { MAX_ENERGY } from "@/lib/constants";
 import { RECOVER_ENERGY_TOKEN_COST } from "@/lib/constants";
 import { initTelegram } from "@/lib/telegram";
 import { useTelegramSession } from "@/hooks/use-telegram-session";
@@ -19,6 +20,7 @@ import { OpsTab } from "@/components/game/tabs/OpsTab";
 import { WorldTab, type WorldSub } from "@/components/game/tabs/WorldTab";
 import { EarnTab, type EarnSub } from "@/components/game/tabs/EarnTab";
 import { BaseTab, type BaseSub } from "@/components/game/tabs/BaseTab";
+import { WarModeVictoryModal } from "@/components/war/WarModeVictoryModal";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -60,6 +62,9 @@ function WaronMergePage() {
   const [generatedImageUrl, setGeneratedImageUrl] = useState<string | null>(
     null,
   );
+
+  // War Mode victory modal control
+  const [showWarVictory, setShowWarVictory] = useState(false);
 
   const session = useTelegramSession();
   const authenticated = session.status === "authenticated";
@@ -118,6 +123,13 @@ function WaronMergePage() {
     }
   }, [game.hydrated, game.canClaimDaily, game.state.hasSeenTutorial]);
 
+  // Show victory modal when War Mode ends with victory
+  useEffect(() => {
+    if (game.state.warMode?.victory === true && !game.state.warMode.active) {
+      setShowWarVictory(true);
+    }
+  }, [game.state.warMode?.victory, game.state.warMode?.active]);
+
   // Resume → push local board (never pull stale board over active play)
   useEffect(() => {
     if (!authenticated) return;
@@ -165,9 +177,9 @@ function WaronMergePage() {
     game.state.warcatTokens >= RECOVER_ENERGY_TOKEN_COST;
 
   const missionsBadge =
-    game.state.dailyQuests.filter((q) => q.progress >= q.target && !q.claimed)
-      .length +
-    game.state.tasks.filter((t) => t.done && !t.claimed).length;
+    (game.state.dailyQuests?.filter((q) => q.progress >= q.target && !q.claimed)
+      .length ?? 0) +
+    (game.state.tasks?.filter((t) => t.done && !t.claimed).length ?? 0);
 
   const serverReady = authenticated && syncStatus === "ready";
 
@@ -243,6 +255,12 @@ function WaronMergePage() {
                 canRecoverWardog={canRecoverWardog}
                 canRecoverWarcat={canRecoverWarcat}
                 onSacrificeHybrid={handleSacrificeHybrid}
+                // War Mode
+                onEnterWarMode={() => game.tryEnterWarMode()}
+                onDeployUnit={(idx) => game.tryDeployUnit(idx)}
+                onActivateAbility={(id) => game.tryActivateAbility(id)}
+                onForceEndWarMode={() => game.forceEndWarMode()}
+                canEnterWarMode={game.canEnterWarMode()}
               />
             </motion.div>
           )}
@@ -343,6 +361,12 @@ function WaronMergePage() {
         setGeneratedImageUrl={setGeneratedImageUrl}
         handleResolveHybrid={handleResolveHybrid}
         handleHybridWithArt={handleHybridWithArt}
+      />
+
+      {/* War Mode Victory Modal */}
+      <WarModeVictoryModal
+        warMode={game.state.warMode}
+        onClose={() => setShowWarVictory(false)}
       />
     </div>
   );

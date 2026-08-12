@@ -4,8 +4,8 @@ import { MAX_TIER, type Faction } from "@/lib/units";
 import {
   BOARD_SIZE,
   SPAWN_ENERGY,
-  type GameState,
-} from "@/lib/game-state";
+} from "@/lib/constants";
+import type { GameState } from "@/lib/game/types";
 import { haptic } from "@/lib/telegram";
 import { playMerge, playLegendary, playNukeExplosion } from "@/lib/sounds";
 import { type Burst } from "@/components/board/BoardCell";
@@ -33,6 +33,7 @@ interface Props {
   canRecoverWardog?: boolean;
   canRecoverWarcat?: boolean;
   onSacrificeHybrid?: (idx: number) => void;
+  onDeployUnit?: (index: number) => void;
 }
 
 const isTouchDevice = () =>
@@ -48,6 +49,7 @@ export function MergeBoard({
   canRecoverWardog = false,
   canRecoverWarcat = false,
   onSacrificeHybrid,
+  onDeployUnit,
 }: Props) {
   const [bursts, setBursts] = useState<Burst[]>([]);
   const burstKey = useRef(1);
@@ -131,6 +133,8 @@ export function MergeBoard({
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerCancel}
         onBoardPointerLeave={onBoardPointerLeave}
+        onDeployUnit={onDeployUnit}
+        warModeActive={state.warMode?.active ?? false}
       />
 
       <BoardActionBar

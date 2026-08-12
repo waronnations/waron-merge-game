@@ -18,6 +18,7 @@ import {
   updateTaskProgress,
   updateConquerFlags,
 } from "./helpers";
+import { tickWarMode, applyMergeControl } from "./war-mode";
 
 export interface HybridClashOutcome {
   nextState: GameState;
@@ -84,6 +85,9 @@ export function computeHybridClash(
     combo: comboCount,
   });
   nextState = applyAchievementRewards(nextState, unlocked);
+  nextState = updateConquerFlags(nextState);
+  nextState = tickWarMode(nextState);
+  nextState = applyMergeControl(nextState, 6, false, true);
 
   return {
     nextState,
@@ -102,7 +106,6 @@ export function computeHybridClash(
   };
 }
 
-/** Normal same-faction merge (T1–T5) */
 export function computeNormalMerge(
   s: GameState,
   from: number,
@@ -172,9 +175,22 @@ export function computeNormalMerge(
 
   const unlocked = evaluateAchievements(next, { combo: comboCount });
   next = applyAchievementRewards(next, unlocked);
-
-  // Conquest Event check after normal merge
   next = updateConquerFlags(next);
+
+  // War Mode
+  next = tickWarMode(next);
+  next = applyMergeControl(next, newTier, true, false);
+
+  if (next.warMode.active) {
+    const gain = 3 + newTier;
+    let fl = next.warMode.frontLine;
+    if (a.faction === "dog") fl = Math.max(0, fl - gain);
+    else fl = Math.min(100, fl + gain);
+    next = {
+      ...next,
+      warMode: { ...next.warMode, frontLine: fl },
+    };
+  }
 
   return {
     nextState: next,
@@ -191,12 +207,6 @@ export function computeNormalMerge(
   };
 }
 
-/**
- * Hybrid ↔ Hybrid merge (any hybrids of the same tier)
- * - Unlimited progression
- * - AI art is kept ONLY if BOTH parents are AI-generated
- * - Otherwise the result is a normal basic hybrid
- */
 export function computeHybridMerge(
   s: GameState,
   from: number,
@@ -208,7 +218,6 @@ export function computeHybridMerge(
   const b = s.board[to];
   if (!a || !b) return null;
 
-  // Must both be hybrids of the exact same tier
   if (a.faction !== "hybrid" || b.faction !== "hybrid") return null;
   if (a.tier !== b.tier) return null;
 
@@ -227,7 +236,6 @@ export function computeHybridMerge(
     isHybrid: true,
     parentDogId: a.parentDogId || b.parentDogId,
     parentCatId: a.parentCatId || b.parentCatId,
-    // Only keep AI art if both parents had it
     imageUrl: keepAI ? a.imageUrl || b.imageUrl : undefined,
     seed: keepAI ? a.seed || b.seed : undefined,
   };
@@ -250,11 +258,16 @@ export function computeHybridMerge(
   };
 
   next = bumpDailyQuest(next, "merge", 1);
+  next = bumpDailyQuest(next, "hybridMerge", 1);
   next = updateTaskProgress(next);
+
+  const unlocked = evaluateAchievements(next, { combo: comboCount, justHybrid: true });
+  next = applyAchievementRewards(next, unlocked);
   next = updateConquerFlags(next);
 
-  const unlocked = evaluateAchievements(next, { combo: comboCount });
-  next = applyAchievementRewards(next, unlocked);
+  // War Mode
+  next = tickWarMode(next);
+  next = applyMergeControl(next, newTier, false, true);
 
   return {
     nextState: next,

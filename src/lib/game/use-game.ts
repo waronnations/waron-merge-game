@@ -60,6 +60,15 @@ import {
   hydrateState,
 } from "./server-reconcile";
 import { getTreasuryHealthFn } from "@/lib/treasury.functions";
+import {
+  canEnterWarMode,
+  enterWarMode,
+  tickWarMode,
+  deployUnit,
+  activateHybridAbility,
+  endWarMode,
+} from "./war-mode";
+import type { HybridCommanderAbilityId } from "@/lib/constants/war-mode";
 
 export type { DailyClaimResult, LocalRecoverResult };
 
@@ -152,6 +161,21 @@ export function useGame() {
     }, 1000);
     return () => clearInterval(interval);
   }, []);
+
+  // War Mode ticker
+  useEffect(() => {
+    if (!hydrated) return;
+    const id = setInterval(() => {
+      const current = stateRef.current;
+      if (!current.warMode?.active) return;
+      const next = tickWarMode(current);
+      if (next !== current) {
+        stateRef.current = next;
+        setState(next);
+      }
+    }, 2000);
+    return () => clearInterval(id);
+  }, [hydrated]);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -517,6 +541,42 @@ export function useGame() {
     });
   }, []);
 
+  // ── WAR MODE ACTIONS ──────────────────────────────────────────────
+  const tryEnterWarMode = useCallback(() => {
+    const s = stateRef.current;
+    const next = enterWarMode(s);
+    if (!next) return { ok: false as const, reason: "Cannot enter War Mode" };
+    stateRef.current = next;
+    setState(next);
+    bumpBoardRevision();
+    return { ok: true as const };
+  }, []);
+
+  const tryDeployUnit = useCallback((index: number) => {
+    const result = deployUnit(stateRef.current, index);
+    if (result.ok) {
+      stateRef.current = result.nextState;
+      setState(result.nextState);
+      bumpBoardRevision();
+    }
+    return result;
+  }, []);
+
+  const tryActivateAbility = useCallback((abilityId: HybridCommanderAbilityId) => {
+    const next = activateHybridAbility(stateRef.current, abilityId);
+    if (!next) return { ok: false as const };
+    stateRef.current = next;
+    setState(next);
+    return { ok: true as const };
+  }, []);
+
+  const forceEndWarMode = useCallback(() => {
+    const next = endWarMode(stateRef.current);
+    stateRef.current = next;
+    setState(next);
+    bumpBoardRevision();
+  }, []);
+
   return {
     state,
     hydrated,
@@ -542,5 +602,13 @@ export function useGame() {
     hydrate,
     applyServerState,
     applyServerEconomy,
+
+    // War Mode
+    warMode: state.warMode,
+    tryEnterWarMode,
+    tryDeployUnit,
+    tryActivateAbility,
+    forceEndWarMode,
+    canEnterWarMode: () => canEnterWarMode(stateRef.current),
   };
 }
