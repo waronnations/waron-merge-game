@@ -122,7 +122,7 @@ export const NATION_POOL = [
   { id: "ye", name: "Yemen", emoji: "🇾🇪" },
 ] as const;
 
-const PLAYER_POOL = [
+const FALLBACK_PLAYER_POOL = [
   "Shadow", "Viper", "Ghost", "Raven", "Blaze", "Nova", "Kane",
   "Rex", "Ace", "Wolf", "Storm", "Phoenix", "Drake", "Lynx", "Zero",
   "Reaper", "Spectre", "Titan", "Cobra", "Hawk",
@@ -147,7 +147,14 @@ function findSpawnIndex(board: (Cell | null)[]): number | null {
   return pool[Math.floor(Math.random() * pool.length)];
 }
 
-export function maybeSpawnTarget(s: GameState, now = Date.now()): GameState {
+/**
+ * @param realPlayers – optional list of real recent player names from OPS kill feed
+ */
+export function maybeSpawnTarget(
+  s: GameState,
+  now = Date.now(),
+  realPlayers: string[] = [],
+): GameState {
   if (!s.warMode?.active) return s;
 
   let mergesSince = (s.warMode.mergesSinceLastTarget ?? 0) + 1;
@@ -159,7 +166,7 @@ export function maybeSpawnTarget(s: GameState, now = Date.now()): GameState {
   ) {
     const idx = findSpawnIndex(s.board);
     if (idx !== null) {
-      const isNation = Math.random() < 0.6;
+      const isNation = Math.random() < 0.55;
       const id = generateTargetId();
 
       let nationId: string | undefined;
@@ -176,7 +183,12 @@ export function maybeSpawnTarget(s: GameState, now = Date.now()): GameState {
         nationEmoji = nation.emoji;
         label = nation.name;
       } else {
-        playerName = PLAYER_POOL[Math.floor(Math.random() * PLAYER_POOL.length)];
+        // Prefer real players from kill feed
+        if (realPlayers.length > 0) {
+          playerName = realPlayers[Math.floor(Math.random() * realPlayers.length)];
+        } else {
+          playerName = FALLBACK_PLAYER_POOL[Math.floor(Math.random() * FALLBACK_PLAYER_POOL.length)];
+        }
         playerId = Math.floor(Math.random() * 900000000) + 100000000;
         label = playerName;
       }
@@ -202,7 +214,6 @@ export function maybeSpawnTarget(s: GameState, now = Date.now()): GameState {
         targetType: target.type,
         targetId: id,
         targetLabel: label,
-        // store emoji for rendering
         ...(isNation ? { nationId, nationEmoji } : {}),
       } as Cell;
 

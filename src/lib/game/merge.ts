@@ -18,7 +18,8 @@ import {
   updateTaskProgress,
   updateConquerFlags,
 } from "./helpers";
-import { tickWarMode, applyMergeControl } from "./war-mode";
+import { tickWarMode, applyMergeControl, afterMergeWarMode } from "./war-mode";
+import { attackTarget } from "./war-targets";
 
 export interface HybridClashOutcome {
   nextState: GameState;
@@ -28,6 +29,69 @@ export interface HybridClashOutcome {
   to: number;
   explosionKey: number;
   result: MergeResult;
+}
+
+/**
+ * NEW: Attack a Live Target by merging into it
+ * - Player target  → any unit T2+
+ * - Nation target  → Tier 5 or Hybrid
+ */
+export function computeTargetAttack(
+  s: GameState,
+  from: number,
+  to: number,
+): { nextState: GameState; result: MergeResult; rewardText?: string } | null {
+  const attacker = s.board[from];
+  const target = s.board[to];
+
+  if (!attacker || !target || !target.isTarget) return null;
+  if (attacker.faction === "target") return null; // can't attack with another target
+
+  const isNation = target.targetType === "nation";
+  const isPlayer = target.targetType === "player";
+
+  // Rules
+  if (isPlayer) {
+    // Any unit tier 2 or higher can strike a player
+    if (attacker.tier < 2 && attacker.faction !== "hybrid") return null;
+  }
+
+  if (isNation) {
+    // Only T5 or Hybrid can nuke a country
+    if (attacker.tier < MAX_TIER && attacker.faction !== "hybrid") return null;
+  }
+
+  // Perform the attack
+  const attackResult = attackTarget(s, to);
+  if (!attackResult.ok) return null;
+
+  // Also remove the attacker unit (it was "used" in the attack)
+  const board = [...attackResult.nextState.board];
+  board[from] = null;
+
+  let nextState: GameState = {
+    ...attackResult.nextState,
+    board,
+    energy: Math.max(0, attackResult.nextState.energy - ENERGY_PER_MERGE),
+    totalMerges: attackResult.nextState.totalMerges + 1,
+    lastMergeAt: Date.now(),
+    lastSeenAt: Date.now(),
+  };
+
+  nextState = bumpDailyQuest(nextState, "merge", 1);
+  nextState = updateTaskProgress(nextState);
+  nextState = updateConquerFlags(nextState);
+  nextState = afterMergeWarMode(nextState);
+
+  return {
+    nextState,
+    result: {
+      ok: true,
+      gloryGained: isNation ? 480 : 320,
+      combo: 1,
+    },
+    rewardText: attackResult.rewardText,
+  };
 }
 
 export function computeHybridClash(
@@ -117,6 +181,9 @@ export function computeNormalMerge(
   const b = s.board[to];
   if (!a || !b) return null;
 
+  // Skip if either is a target (handled by computeTargetAttack)
+  if (a.faction === "target" || b.faction === "target") return null;
+
   if (a.tier >= MAX_TIER || b.tier >= MAX_TIER) {
     return null;
   }
@@ -177,11 +244,10 @@ export function computeNormalMerge(
   next = applyAchievementRewards(next, unlocked);
   next = updateConquerFlags(next);
 
-  // War Mode
   next = tickWarMode(next);
   next = applyMergeControl(next, newTier, true, false);
 
-  if (next.warMode.active) {
+  if (next.warMode?.active) {
     const gain = 3 + newTier;
     let fl = next.warMode.frontLine;
     if (a.faction === "dog") fl = Math.max(0, fl - gain);
@@ -218,6 +284,7 @@ export function computeHybridMerge(
   const b = s.board[to];
   if (!a || !b) return null;
 
+  if (a.faction === "target" || b.faction === "target") return null;
   if (a.faction !== "hybrid" || b.faction !== "hybrid") return null;
   if (a.tier !== b.tier) return null;
 
@@ -251,7 +318,6 @@ export function computeHybridMerge(
     glory: s.glory + gloryGain,
     energy: Math.max(0, s.energy - ENERGY_PER_MERGE),
     totalMerges: s.totalMerges + 1,
-    highestTier: Math.max(s.highestTier, newTier),
     lastMergeAt: Date.now(),
     lastSeenAt: Date.now(),
     comboCount,
@@ -260,12 +326,7 @@ export function computeHybridMerge(
   next = bumpDailyQuest(next, "merge", 1);
   next = bumpDailyQuest(next, "hybridMerge", 1);
   next = updateTaskProgress(next);
-
-  const unlocked = evaluateAchievements(next, { combo: comboCount, justHybrid: true });
-  next = applyAchievementRewards(next, unlocked);
   next = updateConquerFlags(next);
-
-  // War Mode
   next = tickWarMode(next);
   next = applyMergeControl(next, newTier, false, true);
 
@@ -274,10 +335,9 @@ export function computeHybridMerge(
     result: {
       ok: true,
       isHybrid: true,
+      gloryGained: gloryGain,
       combo: comboCount,
       comboMult,
-      unlocked,
-      gloryGained: gloryGain,
     },
   };
 }

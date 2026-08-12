@@ -9,22 +9,19 @@ import {
   type EnergyTreasuryZone,
 } from "@/lib/constants";
 import { preloadUnitImages } from "@/lib/preload-units";
-import type { GameState, HybridNFT } from "./types";
+import type { GameState } from "./types";
 import {
-  applyOfflineEnergyRegen,
-  clampEnergy,
   initialState,
   isCorrectSide,
   load,
   pickDailyQuests,
   save,
-  sanitizeBoard,
-  truncateToDay,
 } from "./helpers";
 import {
   computeHybridClash,
   computeNormalMerge,
   computeHybridMerge,
+  computeTargetAttack,
 } from "./merge";
 import { computeRollbackSpawn, computeSpawn } from "./spawn";
 import {
@@ -68,6 +65,8 @@ import {
   markTargetTutorialSeen,
 } from "./war-mode";
 import type { HybridCommanderAbilityId } from "@/lib/constants/war-mode";
+import { useRecentOpsPlayers } from "@/hooks/use-recent-ops-players";
+import { battlefieldStrikeFn } from "@/lib/battlefield.functions";
 
 export type { DailyClaimResult, LocalRecoverResult };
 
@@ -81,6 +80,9 @@ export function useGame() {
   const boardRevisionRef = useRef(0);
   const localBoardLockUntilRef = useRef(0);
   const treasuryZoneRef = useRef<EnergyTreasuryZone>("yellow");
+
+  // Real recent players from OPS Kill Feed
+  const realPlayers = useRecentOpsPlayers(25);
 
   const bumpBoardRevision = () => {
     boardRevisionRef.current += 1;
@@ -104,6 +106,7 @@ export function useGame() {
     if (hydrated) save(state);
   }, [state, hydrated]);
 
+  // Treasury zone
   useEffect(() => {
     let cancelled = false;
     const refreshZone = async () => {
@@ -130,6 +133,7 @@ export function useGame() {
     };
   }, []);
 
+  // Daily quests
   useEffect(() => {
     const check = () => {
       setState((s) => {
@@ -139,10 +143,11 @@ export function useGame() {
         return next;
       });
     };
-    const int = setInterval(check, 60 * 1000);
+    const int = setInterval(check, 60_000);
     return () => clearInterval(int);
   }, []);
 
+  // Energy regen
   useEffect(() => {
     const interval = setInterval(() => {
       setState((s) => {
@@ -155,21 +160,25 @@ export function useGame() {
     return () => clearInterval(interval);
   }, []);
 
-  // War Mode ticker
+  // War Mode ticker + target spawning with real players
   useEffect(() => {
     if (!hydrated) return;
     const id = setInterval(() => {
       const current = stateRef.current;
       if (!current.warMode?.active) return;
-      const next = tickWarMode(current);
+
+      let next = tickWarMode(current);
+      // Pass real players so targets prefer real names
+      next = afterMergeWarMode(next, realPlayers);
       if (next !== current) {
         stateRef.current = next;
         setState(next);
       }
     }, 2000);
     return () => clearInterval(id);
-  }, [hydrated]);
+  }, [hydrated, realPlayers]);
 
+  // Idle
   useEffect(() => {
     if (!hydrated) return;
     const calculateIdle = () => {
@@ -188,6 +197,7 @@ export function useGame() {
     return () => document.removeEventListener("visibilitychange", onVis);
   }, [hydrated]);
 
+  // ─── MAIN MERGE ────────────────────────────────────────────────
   const tryMerge = useCallback(
     (
       from: number,
@@ -203,6 +213,7 @@ export function useGame() {
       comboMult?: number;
       unlocked?: string[];
       gloryGained?: number;
+      rewardText?: string;
     } => {
       const s = stateRef.current;
       if (from === to) return { ok: false };
@@ -211,11 +222,28 @@ export function useGame() {
       if (!a || !b) return { ok: false };
       if (s.energy < ENERGY_PER_MERGE) return { ok: false };
 
+      // 0. LIVE TARGET ATTACK (Player STRIKE or Nation NUKE)
+      const targetAttack = computeTargetAttack(s, from, to);
+      if (targetAttack) {
+        let nextState = targetAttack.nextState;
+        nextState = afterMergeWarMode(nextState, realPlayers);
+        stateRef.current = nextState;
+        setState(nextState);
+        bumpBoardRevision();
+
+        // Fire real OPS / Nuke in background
+        void fireRealTargetAction(a, b);
+
+        return {
+          ...targetAttack.result,
+          rewardText: targetAttack.rewardText,
+        };
+      }
+
       // 1. Classic Hybrid Clash
       const clash = computeHybridClash(s, from, to, comboCount);
       if (clash) {
-        let nextState = clash.nextState;
-        nextState = afterMergeWarMode(nextState);
+        let nextState = afterMergeWarMode(clash.nextState, realPlayers);
         stateRef.current = nextState;
         setState(nextState);
         bumpBoardRevision();
@@ -249,7 +277,7 @@ export function useGame() {
       // 2. Hybrid ↔ Hybrid
       const hybridMerge = computeHybridMerge(s, from, to, comboMult, comboCount);
       if (hybridMerge) {
-        let nextState = afterMergeWarMode(hybridMerge.nextState);
+        let nextState = afterMergeWarMode(hybridMerge.nextState, realPlayers);
         stateRef.current = nextState;
         setState(nextState);
         bumpBoardRevision();
@@ -260,24 +288,60 @@ export function useGame() {
       const merged = computeNormalMerge(s, from, to, comboMult, comboCount);
       if (!merged) return { ok: false };
 
-      let nextState = afterMergeWarMode(merged.nextState);
+      let nextState = afterMergeWarMode(merged.nextState, realPlayers);
       stateRef.current = nextState;
       setState(nextState);
       bumpBoardRevision();
       return merged.result;
     },
-    [],
+    [realPlayers],
   );
 
+  /** Fire real OPS strike or Nuke so history + bot posts happen */
+  async function fireRealTargetAction(attacker: any, targetCell: any) {
+    try {
+      if (targetCell.targetType === "player") {
+        let weaponId: "knife" | "pistol" | "rifle" = "knife";
+        if (attacker.tier >= 4 || attacker.faction === "hybrid") weaponId = "rifle";
+        else if (attacker.tier >= 3) weaponId = "pistol";
+
+        await battlefieldStrikeFn({
+          data: {
+            target: targetCell.targetLabel || "Enemy",
+            weaponId,
+          },
+        });
+      }
+
+      if (targetCell.targetType === "nation") {
+        // Wire your real launchNukeFn here when ready
+        console.log("[WarMode] Nation nuke:", targetCell.targetLabel);
+      }
+    } catch (err) {
+      console.warn("[WarMode] Server target action failed", err);
+    }
+  }
+
+  // ─── Rest of actions ───────────────────────────────────────────
   const swap = useCallback((from: number, to: number) => {
     setState((s) => {
       if (from === to) return s;
       const a = s.board[from];
       if (!a) return s;
-      if (a.faction !== "hybrid" && a.faction !== "target" && !isCorrectSide(to, a.faction)) return s;
+      if (
+        a.faction !== "hybrid" &&
+        a.faction !== "target" &&
+        !isCorrectSide(to, a.faction)
+      )
+        return s;
 
       const b = s.board[to];
-      if (b && b.faction !== "hybrid" && b.faction !== "target" && !isCorrectSide(from, b.faction))
+      if (
+        b &&
+        b.faction !== "hybrid" &&
+        b.faction !== "target" &&
+        !isCorrectSide(from, b.faction)
+      )
         return s;
 
       if (a.tier >= MAX_TIER && a.faction !== "hybrid") return s;
@@ -337,53 +401,39 @@ export function useGame() {
     });
   }, []);
 
-  const sacrificeBoardHybrid = useCallback(
-    (
-      idx: number,
-    ):
-      | { ok: true; glory: number; wardog: number; warcat: number }
-      | { ok: false; reason: string } => {
-      const s = stateRef.current;
-      const outcome = sacrificeBoardHybridState(s, idx);
-      if (!outcome.ok) return outcome;
+  const sacrificeBoardHybrid = useCallback((idx: number) => {
+    const s = stateRef.current;
+    const outcome = sacrificeBoardHybridState(s, idx);
+    if (!outcome.ok) return outcome;
 
-      stateRef.current = outcome.nextState;
-      setState(outcome.nextState);
-      bumpBoardRevision();
+    stateRef.current = outcome.nextState;
+    setState(outcome.nextState);
+    bumpBoardRevision();
 
-      return {
-        ok: true,
-        glory: outcome.glory,
-        wardog: outcome.wardog,
-        warcat: outcome.warcat,
-      };
-    },
-    [],
-  );
+    return {
+      ok: true as const,
+      glory: outcome.glory,
+      wardog: outcome.wardog,
+      warcat: outcome.warcat,
+    };
+  }, []);
 
-  const sacrificeConqueredSide = useCallback(
-    (
-      side: "dog" | "cat",
-    ):
-      | { ok: true; glory: number; wardog: number; warcat: number }
-      | { ok: false; reason: string } => {
-      const s = stateRef.current;
-      const outcome = sacrificeConqueredSideState(s, side);
-      if (!outcome.ok) return outcome;
+  const sacrificeConqueredSide = useCallback((side: "dog" | "cat") => {
+    const s = stateRef.current;
+    const outcome = sacrificeConqueredSideState(s, side);
+    if (!outcome.ok) return outcome;
 
-      stateRef.current = outcome.nextState;
-      setState(outcome.nextState);
-      bumpBoardRevision();
+    stateRef.current = outcome.nextState;
+    setState(outcome.nextState);
+    bumpBoardRevision();
 
-      return {
-        ok: true,
-        glory: outcome.glory,
-        wardog: outcome.wardog,
-        warcat: outcome.warcat,
-      };
-    },
-    [],
-  );
+    return {
+      ok: true as const,
+      glory: outcome.glory,
+      wardog: outcome.wardog,
+      warcat: outcome.warcat,
+    };
+  }, []);
 
   const claimDaily = useCallback((): DailyClaimResult => {
     const s = stateRef.current;
@@ -394,9 +444,7 @@ export function useGame() {
     return outcome.result;
   }, []);
 
-  const canClaimDaily = useCallback(() => {
-    return canClaimDailyPure(stateRef.current);
-  }, []);
+  const canClaimDaily = useCallback(() => canClaimDailyPure(stateRef.current), []);
 
   const claimTask = useCallback((id: string) => {
     const s = stateRef.current;
@@ -459,28 +507,21 @@ export function useGame() {
     });
   }, []);
 
-  const recoverEnergy = useCallback((
-    _payWith?: "wardog" | "warcat",
-  ): LocalRecoverResult => {
-    const s = stateRef.current;
-    const outcome = computeRecoverEnergy(s);
-    if (!outcome.ok) return outcome;
-    stateRef.current = outcome.nextState;
-    setState(outcome.nextState);
-    return {
-      ok: true,
-      energy: outcome.energy,
-      spent: outcome.spent,
-    };
-  }, []);
-
-  const useNuke = useCallback(() => {
-    console.warn(
-      "[WarOnNations] useNuke is deprecated. Use launchNuke(targetNationId) instead.",
-    );
-  }, []);
-
-  const nukeWorld = useNuke;
+  const recoverEnergy = useCallback(
+    (_payWith?: "wardog" | "warcat"): LocalRecoverResult => {
+      const s = stateRef.current;
+      const outcome = computeRecoverEnergy(s);
+      if (!outcome.ok) return outcome;
+      stateRef.current = outcome.nextState;
+      setState(outcome.nextState);
+      return {
+        ok: true,
+        energy: outcome.energy,
+        spent: outcome.spent,
+      };
+    },
+    [],
+  );
 
   const hydrate = useCallback((partial: Partial<GameState>) => {
     setState((s) => {
@@ -496,11 +537,7 @@ export function useGame() {
         boardRevision: boardRevisionRef.current,
         localBoardLockUntil: localBoardLockUntilRef.current,
       });
-
-      if (!preferLocalBoard) {
-        boardRevisionRef.current = 0;
-      }
-
+      if (!preferLocalBoard) boardRevisionRef.current = 0;
       stateRef.current = next;
       return next;
     });
@@ -509,21 +546,18 @@ export function useGame() {
   const applyServerEconomy = useCallback((incoming: Partial<GameState>) => {
     setState((s) => {
       const { next, boardChanged } = applyServerEconomyLogic(s, incoming);
-
       if (boardChanged) {
         boardRevisionRef.current += 1;
         localBoardLockUntilRef.current = Date.now() + LOCAL_BOARD_LOCK_MS;
       }
-
       stateRef.current = next;
       return next;
     });
   }, []);
 
-  // ── WAR MODE + TARGETS ──────────────────────────────────────────
+  // ─── WAR MODE ACTIONS ──────────────────────────────────────────
   const tryEnterWarMode = useCallback(() => {
-    const s = stateRef.current;
-    const next = enterWarMode(s);
+    const next = enterWarMode(stateRef.current);
     if (!next) return { ok: false as const, reason: "Cannot enter War Mode" };
     stateRef.current = next;
     setState(next);
@@ -582,8 +616,6 @@ export function useGame() {
     dismissTutorial,
     grantStarterPack,
     recoverEnergy,
-    useNuke,
-    nukeWorld,
     hydrate,
     applyServerState,
     applyServerEconomy,
