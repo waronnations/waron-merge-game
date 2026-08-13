@@ -11,7 +11,6 @@ import {
 } from "@/lib/constants";
 import { getActiveEvents, getEnergyRegenMultiplier } from "@/lib/events";
 import type { Cell, DailyQuest, GameState, Task } from "./types";
-import { createInitialWarMode } from "./war-mode";
 
 export const STORAGE_KEY = "waron-merge-v2";
 
@@ -26,6 +25,26 @@ export function isCorrectSide(
   if (faction === "hybrid" || faction === "target") return true;
   const col = index % BOARD_SIZE;
   return faction === "dog" ? col < 3 : col >= 3;
+}
+
+/**
+ * Strict war-mode attack rule:
+ * - dog units may only attack the CAT side
+ * - cat units may only attack the DOG side
+ * - hybrids may attack either side
+ */
+export function canAttackIndex(
+  attackerFaction: Faction | "hybrid" | "target",
+  targetIdx: number,
+): boolean {
+  if (attackerFaction === "hybrid" || attackerFaction === "target") return true;
+
+  const targetIsDogSide = isCorrectSide(targetIdx, "dog");
+
+  if (attackerFaction === "dog") return !targetIsDogSide; // dog → only cat side
+  if (attackerFaction === "cat") return targetIsDogSide;  // cat → only dog side
+
+  return false;
 }
 
 export function pickSmartVariant(
@@ -208,8 +227,9 @@ export function sanitizeBoard(board: unknown): (Cell | null)[] {
       faction !== "cat" &&
       faction !== "hybrid" &&
       faction !== "target"
-    )
+    ) {
       continue;
+    }
 
     const tier =
       typeof c.tier === "number" && Number.isFinite(c.tier)
@@ -217,7 +237,6 @@ export function sanitizeBoard(board: unknown): (Cell | null)[] {
         : 1;
 
     const cell: Cell = { id, faction, tier };
-
     if (typeof c.variant === "number" && Number.isFinite(c.variant)) {
       cell.variant = Math.abs(Math.floor(c.variant)) % 3;
     }
@@ -228,19 +247,17 @@ export function sanitizeBoard(board: unknown): (Cell | null)[] {
     if (typeof c.parentDogId === "number") cell.parentDogId = c.parentDogId;
     if (typeof c.parentCatId === "number") cell.parentCatId = c.parentCatId;
     if (c.isHybrid) cell.isHybrid = true;
-
-    // Live Target fields
     if (c.isTarget) cell.isTarget = true;
-    if (c.targetType) cell.targetType = c.targetType;
     if (c.targetId) cell.targetId = c.targetId;
+    if (c.targetType) cell.targetType = c.targetType;
     if (c.targetLabel) cell.targetLabel = c.targetLabel;
-    if ((c as any).nationEmoji) (cell as any).nationEmoji = (c as any).nationEmoji;
-    if ((c as any).nationId) (cell as any).nationId = (c as any).nationId;
+    if (c.nationId) cell.nationId = c.nationId;
+    if (c.nationEmoji) cell.nationEmoji = c.nationEmoji;
+    if (typeof c.deployedUntil === "number") cell.deployedUntil = c.deployedUntil;
 
     out[i] = cell;
   }
 
-  // Force correct side only for normal units
   for (let i = 0; i < size; i++) {
     const cell = out[i];
     if (!cell || cell.faction === "hybrid" || cell.faction === "target") continue;
@@ -406,7 +423,7 @@ export function applyOfflineEnergyRegen(s: GameState): GameState {
 
 export function bumpDailyQuest(
   s: GameState,
-  type: "merge" | "spawn" | "tierUp" | "hybridMerge",
+  type: "merge" | "spawn" | "tierUp",
   amount = 1,
   _tier?: number,
 ): GameState {
@@ -466,7 +483,7 @@ export function initialState(): GameState {
     achievements: [],
     dogSideConquered: false,
     catSideConquered: false,
-    warMode: createInitialWarMode(), // ← always present
+    warMode: undefined,
   };
 }
 
@@ -479,21 +496,13 @@ export function load(): GameState {
     if (!parsed.board || parsed.board.length !== BOARD_SIZE * BOARD_SIZE) {
       return initialState();
     }
-
     const base = initialState();
-    const merged: GameState = {
-      ...base,
-      ...parsed,
-      board: sanitizeBoard(parsed.board),
-      warMode: parsed.warMode
-        ? { ...createInitialWarMode(), ...parsed.warMode }
-        : createInitialWarMode(),
-    };
+    const merged = { ...base, ...parsed } as GameState;
+    merged.board = sanitizeBoard(merged.board);
 
-    // Final safety
-    if (!merged.warMode) {
-      merged.warMode = createInitialWarMode();
-    }
+    // Never restore transient modal / war-target state
+    merged.pendingHybrid = null;
+    merged.explosion = null;
 
     return applyOfflineEnergyRegen(merged);
   } catch {
@@ -501,9 +510,15 @@ export function load(): GameState {
   }
 }
 
-export function save(s: GameState) {
+export function save(s: GameState): void {
+  if (typeof window === "undefined") return;
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
+    const toSave = {
+      ...s,
+      pendingHybrid: null,
+      explosion: null,
+    };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
   } catch {
     /* ignore */
   }

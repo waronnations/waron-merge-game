@@ -1,6 +1,7 @@
 // src/lib/game/war-mode.ts
 /**
  * Pure War Mode logic + Live Targets integration.
+ * Strict adversary-only attack rules enforced.
  */
 
 import type { GameState, WarModeState } from "./types";
@@ -20,7 +21,7 @@ import {
   HYBRID_COMMANDER_ABILITIES,
   type HybridCommanderAbilityId,
 } from "@/lib/constants/war-mode";
-import { updateConquerFlags } from "./helpers";
+import { updateConquerFlags, isCorrectSide, canAttackIndex } from "./helpers";
 import {
   maybeSpawnTarget,
   cleanExpiredTargets,
@@ -76,7 +77,6 @@ export function enterWarMode(s: GameState, now = Date.now()): GameState | null {
 }
 
 export function tickWarMode(s: GameState, now = Date.now()): GameState {
-  // Even if War Mode is off, clean sticky target cells
   if (!s.warMode?.active) {
     return cleanExpiredTargets(s, now);
   }
@@ -159,6 +159,10 @@ export function afterMergeWarMode(
   return next;
 }
 
+/**
+ * Deploy a unit or attack a Live Target.
+ * Strict adversary-only rules are enforced.
+ */
 export function deployUnit(
   s: GameState,
   index: number,
@@ -174,8 +178,17 @@ export function deployUnit(
   const cell = s.board[index];
   if (!cell) return { nextState: s, ok: false, reason: "Empty cell" };
 
+  // ── Live Target attack ─────────────────────────────────────
   if (cell.isTarget) {
-    const result = attackTarget(s, index, now);
+    // Infer attacker: prefer hybrid if present, otherwise opposite of the side
+    const attackerFaction: "dog" | "cat" | "hybrid" =
+      s.board.some((c) => c?.faction === "hybrid")
+        ? "hybrid"
+        : isCorrectSide(index, "dog")
+          ? "cat"
+          : "dog";
+
+    const result = attackTarget(s, index, attackerFaction, now);
     return {
       nextState: result.nextState,
       ok: result.ok,
@@ -183,6 +196,7 @@ export function deployUnit(
     };
   }
 
+  // ── Normal unit deploy ─────────────────────────────────────
   if (cell.tier < 4 && cell.faction !== "hybrid") {
     return {
       nextState: s,
@@ -194,6 +208,11 @@ export function deployUnit(
     return { nextState: s, ok: false, reason: "Already deployed" };
   }
 
+  // Unit must sit on its own side
+  if (cell.faction !== "hybrid" && !isCorrectSide(index, cell.faction)) {
+    return { nextState: s, ok: false, reason: "Unit on wrong side" };
+  }
+
   const board = [...s.board];
   board[index] = {
     ...cell,
@@ -203,9 +222,19 @@ export function deployUnit(
   const gain = DEPLOY_CONTROL_BONUS + (cell.faction === "hybrid" ? 8 : 0);
 
   let frontLine = s.warMode.frontLine;
-  if (cell.faction === "dog") frontLine = Math.max(0, frontLine - gain);
-  else if (cell.faction === "cat")
+  if (cell.faction === "dog") {
+    // Dog pushes toward cat side (lower number)
+    frontLine = Math.max(0, frontLine - gain);
+  } else if (cell.faction === "cat") {
+    // Cat pushes toward dog side (higher number)
     frontLine = Math.min(FRONT_LINE_MAX, frontLine + gain);
+  } else {
+    // Hybrid can push either way
+    frontLine =
+      Math.random() < 0.5
+        ? Math.max(0, frontLine - gain)
+        : Math.min(FRONT_LINE_MAX, frontLine + gain);
+  }
 
   const next: GameState = {
     ...s,
@@ -281,7 +310,6 @@ export function endWarMode(s: GameState, now = Date.now()): GameState {
 
   glory += Math.floor(s.warMode.controlGenerated * 12);
 
-  // Local-only: wipe every country/player cell when War Mode ends
   const board = stripAllTargetCells(s.board);
 
   return {
@@ -299,7 +327,6 @@ export function endWarMode(s: GameState, now = Date.now()): GameState {
   };
 }
 
-/** Clear the victory flag so the modal can close */
 export function clearWarModeVictory(s: GameState): GameState {
   if (!s.warMode || !s.warMode.victory) return s;
   return {
