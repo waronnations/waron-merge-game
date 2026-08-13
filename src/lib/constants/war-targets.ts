@@ -1,37 +1,33 @@
 // src/lib/constants/war-targets.ts
+
+/** How many merges between target spawns */
+export const TARGET_SPAWN_EVERY_MERGES = 4;
+
+/** Max targets on the board at the same time */
+export const TARGET_MAX_ON_BOARD = 2;
+
+/** How long a target stays on the board (ms) */
+export const TARGET_LIFETIME_MS = 45_000;
+
 /**
- * Live Targets system — countries & players that appear on the board during War Mode.
- * Connecting the merge board to real nations + OPS + nukes.
+ * Costs to attack a Live Target
+ * Set to 0 while testing so attacks always succeed.
+ * Later you can raise them (e.g. energy 5, tokens 1).
  */
+export const TARGET_ATTACK_ENERGY_COST = 0;
+export const TARGET_ATTACK_TOKEN_COST = 0;
 
-export type WarTargetType = "nation" | "player";
-
-export const TARGET_SPAWN_EVERY_MERGES = 9;           // every ~9 merges
-export const TARGET_MAX_ON_BOARD = 2;                 // never more than 2 at once
-export const TARGET_LIFETIME_MS = 45_000;             // 45 seconds before it expires
-export const TARGET_SPAWN_ENERGY_COST = 0;            // free to appear
-
-// Costs to attack a target (encourages top-up)
-export const TARGET_ATTACK_ENERGY_COST = 12;
-export const TARGET_ATTACK_TOKEN_COST = 1.5;          // wardog OR warcat
-
-// Rewards
+/** Rewards when you successfully attack */
 export const TARGET_NATION_REWARD = {
   glory: 480,
-  control: 14,
-  wardog: 0.8,
-  warcat: 0.8,
+  wardog: 0.5,
+  warcat: 0.5,
+  control: 12,
 };
 
 export const TARGET_PLAYER_REWARD = {
   glory: 320,
-  control: 9,
-  wardog: 0.45,
-  warcat: 0.45,
+  wardog: 0.3,
+  warcat: 0.3,
+  control: 8,
 };
-
-// Visual
-export const TARGET_PULSE_COLORS = {
-  nation: "#ef4444",   // red
-  player: "#f59e0b",   // amber
-} as const;

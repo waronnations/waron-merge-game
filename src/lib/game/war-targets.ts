@@ -147,9 +147,6 @@ function findSpawnIndex(board: (Cell | null)[]): number | null {
   return pool[Math.floor(Math.random() * pool.length)];
 }
 
-/**
- * @param realPlayers – optional list of real recent player names from OPS kill feed
- */
 export function maybeSpawnTarget(
   s: GameState,
   now = Date.now(),
@@ -183,11 +180,13 @@ export function maybeSpawnTarget(
         nationEmoji = nation.emoji;
         label = nation.name;
       } else {
-        // Prefer real players from kill feed
         if (realPlayers.length > 0) {
           playerName = realPlayers[Math.floor(Math.random() * realPlayers.length)];
         } else {
-          playerName = FALLBACK_PLAYER_POOL[Math.floor(Math.random() * FALLBACK_PLAYER_POOL.length)];
+          playerName =
+            FALLBACK_PLAYER_POOL[
+              Math.floor(Math.random() * FALLBACK_PLAYER_POOL.length)
+            ];
         }
         playerId = Math.floor(Math.random() * 900000000) + 100000000;
         label = playerName;
@@ -262,11 +261,13 @@ export function attackTarget(
     return { nextState: s, ok: false, reason: "Not a target" };
   }
 
-  if (s.energy < TARGET_ATTACK_ENERGY_COST) {
+  // Costs – when set to 0 they never block
+  if (TARGET_ATTACK_ENERGY_COST > 0 && s.energy < TARGET_ATTACK_ENERGY_COST) {
     return { nextState: s, ok: false, reason: "Not enough energy — top up!" };
   }
 
   const hasTokens =
+    TARGET_ATTACK_TOKEN_COST <= 0 ||
     s.wardogTokens >= TARGET_ATTACK_TOKEN_COST ||
     s.warcatTokens >= TARGET_ATTACK_TOKEN_COST;
 
@@ -279,13 +280,15 @@ export function attackTarget(
     return { nextState: s, ok: false, reason: "Target expired" };
   }
 
-  // Spend tokens
+  // Spend tokens (only if cost > 0)
   let wardog = s.wardogTokens;
   let warcat = s.warcatTokens;
-  if (wardog >= TARGET_ATTACK_TOKEN_COST) {
-    wardog -= TARGET_ATTACK_TOKEN_COST;
-  } else {
-    warcat -= TARGET_ATTACK_TOKEN_COST;
+  if (TARGET_ATTACK_TOKEN_COST > 0) {
+    if (wardog >= TARGET_ATTACK_TOKEN_COST) {
+      wardog -= TARGET_ATTACK_TOKEN_COST;
+    } else {
+      warcat -= TARGET_ATTACK_TOKEN_COST;
+    }
   }
 
   const reward =
@@ -303,7 +306,7 @@ export function attackTarget(
   const next: GameState = {
     ...s,
     board,
-    energy: s.energy - TARGET_ATTACK_ENERGY_COST,
+    energy: Math.max(0, s.energy - TARGET_ATTACK_ENERGY_COST),
     wardogTokens: wardog + reward.wardog,
     warcatTokens: warcat + reward.warcat,
     glory: s.glory + reward.glory,
@@ -311,7 +314,7 @@ export function attackTarget(
       ...s.warMode,
       targets,
       frontLine,
-      controlGenerated: s.warMode.controlGenerated + reward.control,
+      controlGenerated: (s.warMode.controlGenerated || 0) + reward.control,
     },
   };
 
