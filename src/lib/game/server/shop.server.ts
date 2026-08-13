@@ -146,13 +146,11 @@ export async function serverPurchaseShopItem(
   const baseCost = Number(item.cost);
   const cost = await applyDynamicTax(baseCost, payWith);
 
-  // energyPack + every other shop item → spendable (top-up) only
   const payment = await spendSpendableOnly(userId, cost, payWith);
   if (!payment.ok) {
     return { ok: false, reason: "insufficient_spendable" };
   }
 
-  // Apply item effect
   if (itemId === "energyPack") {
     state.energy = clampServerEnergy(
       Number(state.energy ?? 0) + 30,
@@ -201,16 +199,16 @@ export async function serverPurchaseShopItem(
 
 /**
  * Board energy recover — UNCLAIMED playable jettons only.
- * Does not touch top-up / spendable balances.
- * This is the only place in the game that spends unclaimed tokens.
  *
- * FIX: apply passive regen BEFORE the "full" check so client/server
- * energy desync (client shows 0, server still has old high value)
- * no longer falsely returns energy_full.
+ * FIX for local-first desync:
+ * Client spends energy on merges; server often still has ~100.
+ * Client sends clientEnergy; we use min(server, client) so recover works
+ * when the UI shows empty energy.
  */
 export async function serverRecoverEnergy(
   userId: number,
   payWith: PayToken = "wardog",
+  clientEnergy?: number,
 ): Promise<
   | {
       ok: true;
@@ -234,26 +232,32 @@ export async function serverRecoverEnergy(
     loaded,
   );
 
-  // ── Apply passive regen BEFORE the "full" check ──────────────────────
   const now = Date.now();
-  let currentEnergy = clampServerEnergy(Number(state.energy ?? 0), 0);
+  let serverEnergy = clampServerEnergy(Number(state.energy ?? 0), 0);
   const lastRegen =
     typeof state.lastRegenAt === "number" && state.lastRegenAt > 0
       ? state.lastRegenAt
       : now;
 
-  // Base regen rate (1 energy / 75s) — same as ENERGY_REGEN_MS
+  // Passive regen (base rate 1 / 75s)
   const ENERGY_REGEN_MS = 75_000;
   const gained = Math.floor((now - lastRegen) / ENERGY_REGEN_MS);
-  if (gained > 0 && currentEnergy < MAX_ENERGY) {
-    currentEnergy = clampServerEnergy(currentEnergy + gained, 0);
-    state.energy = currentEnergy;
+  if (gained > 0 && serverEnergy < MAX_ENERGY) {
+    serverEnergy = clampServerEnergy(serverEnergy + gained, 0);
     state.lastRegenAt = lastRegen + gained * ENERGY_REGEN_MS;
   }
 
-  // Only reject when truly full (0.5 tolerance for float noise)
+  // Trust the lower of server vs what the client is displaying
+  const reported =
+    typeof clientEnergy === "number" && Number.isFinite(clientEnergy)
+      ? clampServerEnergy(clientEnergy, 0)
+      : serverEnergy;
+  let currentEnergy = Math.min(serverEnergy, reported);
+
+  // Write the reconciled value so DB matches reality
+  state.energy = currentEnergy;
+
   if (currentEnergy >= MAX_ENERGY - 0.5) {
-    // Persist any regen we applied so the next pull is consistent
     await writeProgress(userId, state, { touchSyncClock: false });
     return { ok: false, reason: "energy_full" };
   }
@@ -296,6 +300,8 @@ export async function serverRecoverEnergy(
       spentPlayable: paid.spent,
       spentSpendable: 0,
       paymentSource: "playable",
+      clientEnergy: reported,
+      serverEnergyBefore: serverEnergy,
     },
   });
 

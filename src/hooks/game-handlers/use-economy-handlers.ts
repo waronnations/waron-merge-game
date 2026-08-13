@@ -61,11 +61,10 @@ export function useEconomyHandlers({
 }) {
   /**
    * Board energy recover — UNCLAIMED playable $WARDOG / $WARCAT only.
-   * Never touches top-up / spendable balances.
+   * Sends clientEnergy so server can reconcile local-first desync.
    */
   const handleRecoverEnergy = useCallback(
     (payWith: PayToken = "wardog") => {
-      // Skip optimistic local debit when authenticated — server owns the rules
       if (!authenticated) {
         const local = game.recoverEnergy?.(payWith) ?? game.recoverEnergy?.();
         if (local && typeof local === "object" && "ok" in local && !local.ok) {
@@ -88,10 +87,21 @@ export function useEconomyHandlers({
 
       void (async () => {
         try {
-          const res = await recoverEnergy({ data: { payWith } });
+          const clientEnergy = Number(game.state?.energy ?? 0);
+          const res = await recoverEnergy({
+            data: { payWith, clientEnergy },
+          });
           if (!res.ok) {
-            // Always await pull so UI matches server energy
-            // (fixes "0 energy on client / full on server" desync)
+            // Force UI energy from server when it really is full
+            if (
+              res.reason === "energy_full" ||
+              res.reason === "already_full"
+            ) {
+              game.hydrate({
+                energy: 100,
+                lastRegenAt: Date.now(),
+              });
+            }
             await pullFromServer();
             spendErrorToast(res.reason, payWith);
             return;

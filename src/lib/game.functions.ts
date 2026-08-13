@@ -163,12 +163,14 @@ export const purchaseShopItem = createServerFn({ method: "POST" })
 /**
  * Board energy recovery.
  * Spend from the chosen token only (WARDOG or WARCAT). Never TON.
+ * clientEnergy = what the Mini App currently shows (fixes local-first desync).
  */
 export const recoverEnergy = createServerFn({ method: "POST" })
   .validator((input: unknown) =>
     z
       .object({
         payWith: PayTokenSchema.default("wardog"),
+        clientEnergy: z.number().min(0).max(200).optional(),
       })
       .parse(input ?? {}),
   )
@@ -178,7 +180,7 @@ export const recoverEnergy = createServerFn({ method: "POST" })
     await ensureSchema();
     const userId = await requireUserId();
     assertRateLimit(`recover:${userId}`, 15, 60_000);
-    return serverRecoverEnergy(userId, data.payWith);
+    return serverRecoverEnergy(userId, data.payWith, data.clientEnergy);
   });
 
 export const claimDaily = createServerFn({ method: "POST" }).handler(
