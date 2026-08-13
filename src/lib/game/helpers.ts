@@ -21,9 +21,9 @@ export function randomFaction(): Faction {
 
 export function isCorrectSide(
   index: number,
-  faction: Faction | "hybrid",
+  faction: Faction | "hybrid" | "target",
 ): boolean {
-  if (faction === "hybrid") return true;
+  if (faction === "hybrid" || faction === "target") return true;
   const col = index % BOARD_SIZE;
   return faction === "dog" ? col < 3 : col >= 3;
 }
@@ -203,7 +203,13 @@ export function sanitizeBoard(board: unknown): (Cell | null)[] {
     seen.add(id);
 
     const faction = c.faction;
-    if (faction !== "dog" && faction !== "cat" && faction !== "hybrid") continue;
+    if (
+      faction !== "dog" &&
+      faction !== "cat" &&
+      faction !== "hybrid" &&
+      faction !== "target"
+    )
+      continue;
 
     const tier =
       typeof c.tier === "number" && Number.isFinite(c.tier)
@@ -211,6 +217,7 @@ export function sanitizeBoard(board: unknown): (Cell | null)[] {
         : 1;
 
     const cell: Cell = { id, faction, tier };
+
     if (typeof c.variant === "number" && Number.isFinite(c.variant)) {
       cell.variant = Math.abs(Math.floor(c.variant)) % 3;
     }
@@ -221,14 +228,22 @@ export function sanitizeBoard(board: unknown): (Cell | null)[] {
     if (typeof c.parentDogId === "number") cell.parentDogId = c.parentDogId;
     if (typeof c.parentCatId === "number") cell.parentCatId = c.parentCatId;
     if (c.isHybrid) cell.isHybrid = true;
-    if (typeof c.deployedUntil === "number") cell.deployedUntil = c.deployedUntil;
+
+    // Live Target fields
+    if (c.isTarget) cell.isTarget = true;
+    if (c.targetType) cell.targetType = c.targetType;
+    if (c.targetId) cell.targetId = c.targetId;
+    if (c.targetLabel) cell.targetLabel = c.targetLabel;
+    if ((c as any).nationEmoji) (cell as any).nationEmoji = (c as any).nationEmoji;
+    if ((c as any).nationId) (cell as any).nationId = (c as any).nationId;
 
     out[i] = cell;
   }
 
+  // Force correct side only for normal units
   for (let i = 0; i < size; i++) {
     const cell = out[i];
-    if (!cell || cell.faction === "hybrid") continue;
+    if (!cell || cell.faction === "hybrid" || cell.faction === "target") continue;
     if (isCorrectSide(i, cell.faction)) continue;
     out[i] = {
       ...cell,
@@ -395,7 +410,7 @@ export function bumpDailyQuest(
   amount = 1,
   _tier?: number,
 ): GameState {
-  const quests = (s.dailyQuests || []).map((q) => {
+  const quests = s.dailyQuests.map((q) => {
     if (q.claimed) return q;
     if (type === "merge" && q.id.startsWith("dq_merge")) {
       return { ...q, progress: Math.min(q.target, q.progress + amount) };
@@ -451,7 +466,7 @@ export function initialState(): GameState {
     achievements: [],
     dogSideConquered: false,
     catSideConquered: false,
-    warMode: createInitialWarMode(),
+    warMode: createInitialWarMode(), // ← always present
   };
 }
 
@@ -464,15 +479,18 @@ export function load(): GameState {
     if (!parsed.board || parsed.board.length !== BOARD_SIZE * BOARD_SIZE) {
       return initialState();
     }
+
     const base = initialState();
-    const merged = { ...base, ...parsed } as GameState;
-    merged.board = sanitizeBoard(merged.board);
+    const merged: GameState = {
+      ...base,
+      ...parsed,
+      board: sanitizeBoard(parsed.board),
+      warMode: parsed.warMode
+        ? { ...createInitialWarMode(), ...parsed.warMode }
+        : createInitialWarMode(),
+    };
 
-    // CRITICAL: never restore a pending hybrid / explosion from storage
-    merged.pendingHybrid = null;
-    merged.explosion = null;
-
-    // Ensure warMode always exists
+    // Final safety
     if (!merged.warMode) {
       merged.warMode = createInitialWarMode();
     }
@@ -483,16 +501,9 @@ export function load(): GameState {
   }
 }
 
-export function save(s: GameState): void {
-  if (typeof window === "undefined") return;
+export function save(s: GameState) {
   try {
-    // Never persist transient modal state
-    const toSave = {
-      ...s,
-      pendingHybrid: null,
-      explosion: null,
-    };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
   } catch {
     /* ignore */
   }
