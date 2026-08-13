@@ -8,6 +8,7 @@ import {
   STARTER_PACK,
   type EnergyTreasuryZone,
 } from "@/lib/constants";
+import { TARGET_ATTACK_ENERGY_COST } from "@/lib/constants/war-targets";
 import { preloadUnitImages } from "@/lib/preload-units";
 import type { GameState } from "./types";
 import {
@@ -72,6 +73,40 @@ import { battlefieldStrikeFn } from "@/lib/battlefield.functions";
 export type { DailyClaimResult, LocalRecoverResult };
 
 const ZONE_REFRESH_MS = 12_000;
+
+/** Fire real OPS strike or Nation Nuke announcement to group + possible DM */
+async function fireRealTargetAction(attacker: any, targetCell: any) {
+  try {
+    const label = targetCell.targetLabel || "Enemy";
+
+    if (targetCell.targetType === "player") {
+      let weaponId: "knife" | "pistol" | "rifle" = "knife";
+      if (attacker.tier >= 4 || attacker.faction === "hybrid") weaponId = "rifle";
+      else if (attacker.tier >= 3) weaponId = "pistol";
+
+      // Real OPS strike → group announcement + history + possible DM
+      await battlefieldStrikeFn({
+        data: {
+          target: label,
+          weaponId,
+        },
+      });
+    }
+
+    if (targetCell.targetType === "nation") {
+      // Always announce simulated nation nuke to @waronnations
+      const { announceToGroup } = await import("@/lib/notify.server");
+      announceToGroup(
+        `☢️ NATION NUKE CONFIRMED\n\n` +
+          `A Warlord just nuked <b>${label}</b> from the Live Battlefield!\n` +
+          `+480 Glory · Control shifted\n\n` +
+          `The pack is hungry. Feed it 🐺`,
+      );
+    }
+  } catch (err) {
+    console.warn("[WarMode] Server target action failed", err);
+  }
+}
 
 export function useGame() {
   const [state, setState] = useState<GameState>(() => initialState());
@@ -220,7 +255,17 @@ export function useGame() {
       const a = s.board[from];
       const b = s.board[to];
       if (!a || !b) return { ok: false };
-      if (s.energy < ENERGY_PER_MERGE) return { ok: false };
+
+      // FIXED: Live Targets bypass the hard energy gate when cost is free
+      const isTargetAttack = !!(b.isTarget && a.faction !== "target");
+      if (!isTargetAttack && s.energy < ENERGY_PER_MERGE) return { ok: false };
+      if (
+        isTargetAttack &&
+        TARGET_ATTACK_ENERGY_COST > 0 &&
+        s.energy < TARGET_ATTACK_ENERGY_COST
+      ) {
+        return { ok: false };
+      }
 
       // 0. LIVE TARGET ATTACK (Player STRIKE or Nation NUKE)
       const targetAttack = computeTargetAttack(s, from, to);
@@ -231,7 +276,7 @@ export function useGame() {
         setState(nextState);
         bumpBoardRevision();
 
-        // Fire real OPS / Nuke in background
+        // Fire real OPS / Nuke in background → group + possible DM
         void fireRealTargetAction(a, b);
 
         return {
@@ -296,30 +341,6 @@ export function useGame() {
     },
     [realPlayers],
   );
-
-  /** Fire real OPS strike or Nuke so history + bot posts happen */
-  async function fireRealTargetAction(attacker: any, targetCell: any) {
-    try {
-      if (targetCell.targetType === "player") {
-        let weaponId: "knife" | "pistol" | "rifle" = "knife";
-        if (attacker.tier >= 4 || attacker.faction === "hybrid") weaponId = "rifle";
-        else if (attacker.tier >= 3) weaponId = "pistol";
-
-        await battlefieldStrikeFn({
-          data: {
-            target: targetCell.targetLabel || "Enemy",
-            weaponId,
-          },
-        });
-      }
-
-      if (targetCell.targetType === "nation") {
-        console.log("[WarMode] Nation nuke:", targetCell.targetLabel);
-      }
-    } catch (err) {
-      console.warn("[WarMode] Server target action failed", err);
-    }
-  }
 
   // ─── Rest of actions ───────────────────────────────────────────
   const swap = useCallback((from: number, to: number) => {

@@ -20,6 +20,7 @@ import {
 } from "./helpers";
 import { tickWarMode, applyMergeControl, afterMergeWarMode } from "./war-mode";
 import { attackTarget } from "./war-targets";
+import { TARGET_ATTACK_ENERGY_COST } from "@/lib/constants/war-targets";
 
 export interface HybridClashOutcome {
   nextState: GameState;
@@ -50,10 +51,9 @@ export function computeTargetAttack(
   const isNation = target.targetType === "nation";
   const isPlayer = target.targetType === "player";
 
-  // Rules – now more permissive
+  // Rules
   if (isPlayer) {
     // Any unit can strike a player
-    // (you can change to >= 2 if you want)
   } else if (isNation) {
     // Only T5 or Hybrid can nuke
     if (attacker.tier < MAX_TIER && attacker.faction !== "hybrid") return null;
@@ -69,10 +69,15 @@ export function computeTargetAttack(
   const board = [...attackResult.nextState.board];
   board[from] = null;
 
+  // Energy: only subtract ENERGY_PER_MERGE when target cost is free (0)
+  // so free attacks still cost the normal merge energy (consistent with tryMerge)
+  const energyCost =
+    TARGET_ATTACK_ENERGY_COST > 0 ? TARGET_ATTACK_ENERGY_COST : ENERGY_PER_MERGE;
+
   let nextState: GameState = {
     ...attackResult.nextState,
     board,
-    energy: Math.max(0, attackResult.nextState.energy - ENERGY_PER_MERGE),
+    energy: Math.max(0, attackResult.nextState.energy - energyCost),
     totalMerges: attackResult.nextState.totalMerges + 1,
     lastMergeAt: Date.now(),
     lastSeenAt: Date.now(),
@@ -242,17 +247,7 @@ export function computeNormalMerge(
   next = updateConquerFlags(next);
   next = tickWarMode(next);
   next = applyMergeControl(next, newTier, true, false);
-
-  if (next.warMode?.active) {
-    const gain = 3 + newTier;
-    let fl = next.warMode.frontLine;
-    if (a.faction === "dog") fl = Math.max(0, fl - gain);
-    else fl = Math.min(100, fl + gain);
-    next = {
-      ...next,
-      warMode: { ...next.warMode, frontLine: fl },
-    };
-  }
+  next = afterMergeWarMode(next);
 
   return {
     nextState: next,
@@ -269,6 +264,11 @@ export function computeNormalMerge(
   };
 }
 
+/**
+ * Hybrid ↔ Hybrid merge (any hybrids of the same tier)
+ * - Unlimited progression
+ * - AI art is kept ONLY if BOTH parents are AI-generated
+ */
 export function computeHybridMerge(
   s: GameState,
   from: number,
@@ -332,6 +332,7 @@ export function computeHybridMerge(
   next = updateConquerFlags(next);
   next = tickWarMode(next);
   next = applyMergeControl(next, newTier, false, true);
+  next = afterMergeWarMode(next);
 
   return {
     nextState: next,

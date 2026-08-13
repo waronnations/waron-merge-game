@@ -1,4 +1,4 @@
-/** Server-authoritative merge commit logic (tile merges + hybrid trigger). */
+/** Server-authoritative merge commit logic (tile merges + hybrid trigger + Live Targets). */
 
 import {
   BOARD_SIZE,
@@ -92,6 +92,29 @@ export async function serverCommitMerge(
     return { ok: false, reason: "no_energy" };
   }
 
+  // ── LIVE TARGET ATTACK (War Mode) ────────────────────────────────────
+  if ((b as any).isTarget && a.faction !== "target") {
+    const isNation = (b as any).targetType === "nation";
+    // Player targets accept any unit; nation only T5 or hybrid
+    if (isNation && a.tier < MAX_TIER && a.faction !== "hybrid") {
+      return { ok: false, reason: "invalid_merge" };
+    }
+
+    board[from] = null;
+    board[to] = null;
+    state.energy = clampServerEnergy(energyNow - ENERGY_PER_MERGE, 0);
+    state.totalMerges = Number(state.totalMerges) + 1;
+    const gloryGain = isNation ? 480 : 320;
+    state.glory = Number(state.glory) + gloryGain;
+    state.board = board;
+    await writeProgress(userId, state, {
+      touchSyncClock: true,
+      gloryDelta: gloryGain,
+    });
+    return { ok: true, state };
+  }
+
+  // Classic Hybrid Clash (T5 dog + T5 cat)
   const isMax = a.tier >= MAX_TIER && b.tier >= MAX_TIER;
   const opposing =
     a.faction !== b.faction &&
