@@ -16,7 +16,6 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { TabHero } from "@/components/game/TabHero";
-import { TasksPanel, DailyQuestsPanel } from "@/components/Panels";
 import type { GameState } from "@/lib/game-state";
 import {
   haptic,
@@ -123,17 +122,7 @@ function timeAgo(ts: number): string {
   return `${Math.floor(s / 3600)}h`;
 }
 
-export function OpsTab({
-  state,
-  missionsBadge,
-  onClaimDailyQuest,
-  onClaimTask,
-}: {
-  state: GameState;
-  missionsBadge: number;
-  onClaimDailyQuest: (id: string) => void;
-  onClaimTask: (id: string) => void;
-}) {
+export function OpsTab({ state }: { state: GameState }) {
   const [inv, setInv] = useState<InvState | null>(null);
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [history, setHistory] = useState<HistoryRow[]>([]);
@@ -263,9 +252,9 @@ export function OpsTab({
         } else {
           setPreview(null);
           setPreviewError(
-            res.error === "target_not_found"
+            (res as { error?: string }).error === "not_found"
               ? "Player not found in War On Nations"
-              : "Invalid target",
+              : "Could not look up target",
           );
         }
       } catch {
@@ -384,16 +373,6 @@ export function OpsTab({
   return (
     <>
       <TabHero tab="ops" />
-
-      {missionsBadge > 0 && (
-        <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-center text-[0.7rem] font-black uppercase tracking-wider text-amber-300">
-          {missionsBadge} reward{missionsBadge === 1 ? "" : "s"} ready — scroll
-          & tap Claim
-        </div>
-      )}
-
-      <DailyQuestsPanel state={state} onClaim={onClaimDailyQuest} />
-      <TasksPanel state={state} onClaim={onClaimTask} />
 
       {/* ── Armory ─────────────────────────────────────────────────────── */}
       <div className="mt-4 rounded-2xl border border-zinc-700 bg-zinc-900/90 p-4">
@@ -518,7 +497,7 @@ export function OpsTab({
 
         {preview?.protected && (
           <div className="mb-3 rounded-lg border border-amber-600/40 bg-amber-950/40 px-3 py-2 text-[0.65rem] text-amber-200">
-            ⚠️ Protected Leader — attacking risks 1 min jail + glory &
+            Warning Protected Leader — attacking risks 1 min jail + glory &
             WARDOG/WARCAT loss
           </div>
         )}
@@ -548,7 +527,7 @@ export function OpsTab({
                 }`}
               >
                 {BATTLEFIELD_WEAPONS[id].name.split(" ").pop()} · {owned}
-                {onCd ? " ⏳" : ""}
+                {onCd ? " Clock" : ""}
               </button>
             );
           })}
@@ -603,7 +582,7 @@ export function OpsTab({
         </div>
       )}
 
-      {/* ── Kill Feed (scroll box) ─────────────────────────────────────── */}
+      {/* ── Kill Feed ──────────────────────────────────────────────────── */}
       <div className="mt-4 rounded-2xl border border-zinc-700 bg-zinc-900/90 p-4">
         <div className="mb-3 flex items-center gap-2">
           <Radio className="h-4 w-4 text-white" />
@@ -630,14 +609,14 @@ export function OpsTab({
             >
               {row.jailed ? (
                 <>
-                  🔒 <span className="font-bold">{row.attackerName}</span> tried
+                  <span className="font-bold">{row.attackerName}</span> tried
                   to attack protected Leader{" "}
                   <span className="font-bold">{row.victimName}</span> and got
                   JAILED
                 </>
               ) : row.hit ? (
                 <>
-                  ⚔️ <span className="font-bold">{row.attackerName}</span>{" "}
+                  <span className="font-bold">{row.attackerName}</span>{" "}
                   {row.weaponId === "knife"
                     ? "stabbed"
                     : row.weaponId === "pistol"
@@ -660,7 +639,7 @@ export function OpsTab({
         </div>
       </div>
 
-      {/* ── Personal History (scroll box) ──────────────────────────────── */}
+      {/* ── Personal History ───────────────────────────────────────────── */}
       <div className="mt-4 rounded-2xl border border-zinc-700 bg-zinc-900/90 p-4">
         <div className="mb-3 flex items-center gap-2">
           <History className="h-4 w-4 text-white" />

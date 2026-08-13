@@ -176,6 +176,7 @@ function WaronMergePage() {
     game.state.energy < MAX_ENERGY &&
     game.state.warcatTokens >= RECOVER_ENERGY_TOKEN_COST;
 
+  // Kept for tab-bar badge only (claims UI removed from OPS)
   const missionsBadge =
     (game.state.dailyQuests?.filter((q) => q.progress >= q.target && !q.claimed)
       .length ?? 0) +
@@ -211,6 +212,10 @@ function WaronMergePage() {
     generatedImageUrl,
     setShowDaily,
   });
+
+  // silence unused if claims stay only outside OPS
+  void handleClaimTask;
+  void handleClaimDailyQuest;
 
   if (!game.hydrated) {
     return (
@@ -273,12 +278,7 @@ function WaronMergePage() {
               exit={{ opacity: 0, y: -6 }}
               className="space-y-4"
             >
-              <OpsTab
-                state={game.state}
-                missionsBadge={missionsBadge}
-                onClaimDailyQuest={handleClaimDailyQuest}
-                onClaimTask={handleClaimTask}
-              />
+              <OpsTab state={game.state} />
             </motion.div>
           )}
 
