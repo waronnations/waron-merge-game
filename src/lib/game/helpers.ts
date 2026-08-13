@@ -258,6 +258,7 @@ export function sanitizeBoard(board: unknown): (Cell | null)[] {
     out[i] = cell;
   }
 
+  // Force units onto the correct half of the board
   for (let i = 0; i < size; i++) {
     const cell = out[i];
     if (!cell || cell.faction === "hybrid" || cell.faction === "target") continue;
@@ -500,7 +501,7 @@ export function load(): GameState {
     const merged = { ...base, ...parsed } as GameState;
     merged.board = sanitizeBoard(merged.board);
 
-    // Never restore transient modal / war-target state
+    // Never restore transient modal state
     merged.pendingHybrid = null;
     merged.explosion = null;
 

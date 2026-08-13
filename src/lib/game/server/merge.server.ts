@@ -26,7 +26,18 @@ function cellVariant(cell: { id: number; variant?: number }): number {
   return Math.abs(cell.id) % 3;
 }
 
-/** Returns true if the user's nation was hit less than NUKE_HIT_DISABLE_MS ago */
+/** dog → only cat side, cat → only dog side, hybrid → either */
+function canAttackIndex(
+  attackerFaction: string,
+  targetIdx: number,
+): boolean {
+  if (attackerFaction === "hybrid") return true;
+  const targetIsDogSide = isCorrectSide(targetIdx, "dog");
+  if (attackerFaction === "dog") return !targetIsDogSide;
+  if (attackerFaction === "cat") return targetIsDogSide;
+  return false;
+}
+
 async function isNationNukedLocked(userId: number): Promise<boolean> {
   const mem = await sql`
     SELECT n.last_nuke_received_at
@@ -68,7 +79,6 @@ export async function serverCommitMerge(
     return { ok: false, reason: "invalid_indices" };
   }
 
-  // Hard lock after nation is nuked (60 s)
   if (await isNationNukedLocked(userId)) {
     return { ok: false, reason: "nuked_disabled" };
   }
@@ -87,15 +97,29 @@ export async function serverCommitMerge(
   const a = board[from];
   const b = board[to];
   if (!a || !b) return { ok: false, reason: "empty_cell" };
+
   const energyNow = clampServerEnergy(state.energy, 0);
   if (energyNow < ENERGY_PER_MERGE) {
     return { ok: false, reason: "no_energy" };
   }
 
-  // ── LIVE TARGET ATTACK (War Mode) ────────────────────────────────────
+  // ── LIVE TARGET ATTACK (War Mode) – SERVER AUTHORITATIVE ────────────
   if ((b as any).isTarget && a.faction !== "target") {
+    // STRICT RULE: only adversary side
+    if (!canAttackIndex(a.faction, to)) {
+      return {
+        ok: false,
+        reason:
+          a.faction === "dog"
+            ? "wardog_can_only_attack_warcat_side"
+            : a.faction === "cat"
+              ? "warcat_can_only_attack_wardog_side"
+              : "wrong_side",
+      };
+    }
+
     const isNation = (b as any).targetType === "nation";
-    // Player targets accept any unit; nation only T5 or hybrid
+    // Nation targets require T5 or hybrid
     if (isNation && a.tier < MAX_TIER && a.faction !== "hybrid") {
       return { ok: false, reason: "invalid_merge" };
     }
@@ -104,8 +128,27 @@ export async function serverCommitMerge(
     board[to] = null;
     state.energy = clampServerEnergy(energyNow - ENERGY_PER_MERGE, 0);
     state.totalMerges = Number(state.totalMerges) + 1;
+
     const gloryGain = isNation ? 480 : 320;
     state.glory = Number(state.glory) + gloryGain;
+
+    // Optional: push front line if warMode exists on state
+    if ((state as any).warMode?.active) {
+      const wm = (state as any).warMode;
+      const attackedDogSide = isCorrectSide(to, "dog");
+      const control = isNation ? 12 : 8;
+      const push = attackedDogSide ? -control : control;
+      wm.frontLine = Math.max(0, Math.min(100, (wm.frontLine ?? 50) + push));
+      wm.controlGenerated = (wm.controlGenerated ?? 0) + control;
+      // remove the target from the list
+      if (Array.isArray(wm.targets)) {
+        wm.targets = wm.targets.filter(
+          (t: any) => t.id !== (b as any).targetId,
+        );
+      }
+      (state as any).warMode = wm;
+    }
+
     state.board = board;
     await writeProgress(userId, state, {
       touchSyncClock: true,
@@ -140,6 +183,7 @@ export async function serverCommitMerge(
     return { ok: true, state, isHybrid: true };
   }
 
+  // Normal same-faction merge (own side only – already correct)
   if (a.faction !== b.faction || a.tier !== b.tier || a.tier >= MAX_TIER) {
     return { ok: false, reason: "invalid_merge" };
   }

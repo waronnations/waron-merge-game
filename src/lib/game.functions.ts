@@ -26,6 +26,7 @@ import {
   type LeaderboardEntry,
   type ShopItemIdServer,
 } from "@/lib/game.server";
+import { serverCommitDeploy } from "@/lib/game/server/war-mode.server";
 
 export type { LeaderboardEntry, ServerGameState } from "@/lib/game.server";
 
@@ -306,6 +307,27 @@ export const commitSwap = createServerFn({ method: "POST" })
     const userId = await requireUserId();
     assertRateLimit(`swap:${userId}`, 40, 60_000);
     return serverCommitSwap(userId, data.from, data.to);
+  });
+
+/**
+ * Server-authoritative War Mode deploy / Live Target attack.
+ * Enforces adversary-only side rules.
+ */
+export const commitDeploy = createServerFn({ method: "POST" })
+  .validator((input: unknown) =>
+    z
+      .object({
+        index: z.number().int().min(0).max(35),
+      })
+      .parse(input),
+  )
+  .handler(async ({ data }) => {
+    if (!hasDatabase())
+      return { ok: false as const, reason: "database_not_configured" };
+    await ensureSchema();
+    const userId = await requireUserId();
+    assertRateLimit(`deploy:${userId}`, 30, 60_000);
+    return serverCommitDeploy(userId, data.index);
   });
 
 export const resolveHybrid = createServerFn({ method: "POST" })
