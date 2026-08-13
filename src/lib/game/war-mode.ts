@@ -40,6 +40,7 @@ export function createInitialWarMode(): WarModeState {
     targets: [],
     mergesSinceLastTarget: 0,
     hasSeenTargetTutorial: false,
+    victory: false,
   };
 }
 
@@ -68,6 +69,7 @@ export function enterWarMode(s: GameState, now = Date.now()): GameState | null {
       targets: [],
       mergesSinceLastTarget: 0,
       hasSeenTargetTutorial: s.warMode?.hasSeenTargetTutorial ?? false,
+      victory: false,
     },
   };
 }
@@ -82,9 +84,9 @@ export function tickWarMode(s: GameState, now = Date.now()): GameState {
   // Clean expired targets first
   let next = cleanExpiredTargets(s, now);
 
-  let frontLine = next.warMode.frontLine;
-  let controlGenerated = next.warMode.controlGenerated;
-  let lastPassiveAt = next.warMode.lastPassiveAt;
+  let frontLine = next.warMode!.frontLine;
+  let controlGenerated = next.warMode!.controlGenerated;
+  let lastPassiveAt = next.warMode!.lastPassiveAt ?? now;
 
   const elapsed = now - lastPassiveAt;
   if (elapsed >= 10_000) {
@@ -95,19 +97,24 @@ export function tickWarMode(s: GameState, now = Date.now()): GameState {
       controlGenerated += CONQUERED_PASSIVE_CONTROL * ticks;
     }
     if (next.catSideConquered) {
-      frontLine = Math.min(FRONT_LINE_MAX, frontLine + CONQUERED_PASSIVE_CONTROL * ticks);
+      frontLine = Math.min(
+        FRONT_LINE_MAX,
+        frontLine + CONQUERED_PASSIVE_CONTROL * ticks,
+      );
       controlGenerated += CONQUERED_PASSIVE_CONTROL * ticks;
     }
 
     lastPassiveAt = now - (elapsed % 10_000);
   }
 
-  const activeAbilities = next.warMode.activeAbilities.filter((a) => a.endsAt > now);
+  const activeAbilities = (next.warMode!.activeAbilities || []).filter(
+    (a) => a.endsAt > now,
+  );
 
   return {
     ...next,
     warMode: {
-      ...next.warMode,
+      ...next.warMode!,
       frontLine,
       controlGenerated,
       lastPassiveAt,
@@ -138,10 +145,14 @@ export function applyMergeControl(
 }
 
 /** Call this after every successful merge */
-export function afterMergeWarMode(s: GameState, now = Date.now()): GameState {
+export function afterMergeWarMode(
+  s: GameState,
+  realPlayers: string[] = [],
+  now = Date.now(),
+): GameState {
   if (!s.warMode?.active) return s;
   let next = tickWarMode(s, now);
-  next = maybeSpawnTarget(next, now);
+  next = maybeSpawnTarget(next, now, realPlayers);
   return next;
 }
 
@@ -163,11 +174,19 @@ export function deployUnit(
   // If it's a target, treat deploy as an attack
   if (cell.isTarget) {
     const result = attackTarget(s, index, now);
-    return { nextState: result.nextState, ok: result.ok, reason: result.reason };
+    return {
+      nextState: result.nextState,
+      ok: result.ok,
+      reason: result.reason,
+    };
   }
 
   if (cell.tier < 4 && cell.faction !== "hybrid") {
-    return { nextState: s, ok: false, reason: "Only tier 4+ or hybrids can deploy" };
+    return {
+      nextState: s,
+      ok: false,
+      reason: "Only tier 4+ or hybrids can deploy",
+    };
   }
   if (cell.deployedUntil && cell.deployedUntil > now) {
     return { nextState: s, ok: false, reason: "Already deployed" };
@@ -183,7 +202,8 @@ export function deployUnit(
 
   let frontLine = s.warMode.frontLine;
   if (cell.faction === "dog") frontLine = Math.max(0, frontLine - gain);
-  else if (cell.faction === "cat") frontLine = Math.min(FRONT_LINE_MAX, frontLine + gain);
+  else if (cell.faction === "cat")
+    frontLine = Math.min(FRONT_LINE_MAX, frontLine + gain);
 
   const next: GameState = {
     ...s,
@@ -213,7 +233,7 @@ export function activateHybridAbility(
   if (!hasHybrid) return null;
 
   const activeAbilities = [
-    ...s.warMode.activeAbilities.filter((a) => a.endsAt > now),
+    ...(s.warMode.activeAbilities || []).filter((a) => a.endsAt > now),
     { id: abilityId, endsAt: now + def.durationMs },
   ];
 
@@ -241,7 +261,8 @@ export function endWarMode(s: GameState, now = Date.now()): GameState {
 
   const front = s.warMode.frontLine;
   const isVictory = front <= 5 || front >= 95;
-  const isPerfect = (front <= 2 || front >= 98) && s.warMode.controlGenerated > 80;
+  const isPerfect =
+    (front <= 2 || front >= 98) && s.warMode.controlGenerated > 80;
 
   let glory = 0;
   let wardog = 0;
@@ -272,6 +293,18 @@ export function endWarMode(s: GameState, now = Date.now()): GameState {
   };
 }
 
+/** Clear the victory flag so the modal can close */
+export function clearWarModeVictory(s: GameState): GameState {
+  if (!s.warMode || !s.warMode.victory) return s;
+  return {
+    ...s,
+    warMode: {
+      ...s.warMode,
+      victory: false,
+    },
+  };
+}
+
 export function applyControlDrain(
   s: GameState,
   amount: number,
@@ -279,7 +312,7 @@ export function applyControlDrain(
 ): GameState {
   if (!s.warMode?.active) return s;
 
-  const hasTrench = s.warMode.activeAbilities.some(
+  const hasTrench = (s.warMode.activeAbilities || []).some(
     (a) => a.id === "trenchHold" && a.endsAt > now,
   );
   const finalAmount = hasTrench ? amount * 0.4 : amount;

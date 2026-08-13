@@ -63,6 +63,7 @@ import {
   endWarMode,
   afterMergeWarMode,
   markTargetTutorialSeen,
+  clearWarModeVictory,
 } from "./war-mode";
 import type { HybridCommanderAbilityId } from "@/lib/constants/war-mode";
 import { useRecentOpsPlayers } from "@/hooks/use-recent-ops-players";
@@ -168,7 +169,6 @@ export function useGame() {
       if (!current.warMode?.active) return;
 
       let next = tickWarMode(current);
-      // Pass real players so targets prefer real names
       next = afterMergeWarMode(next, realPlayers);
       if (next !== current) {
         stateRef.current = next;
@@ -314,7 +314,6 @@ export function useGame() {
       }
 
       if (targetCell.targetType === "nation") {
-        // Wire your real launchNukeFn here when ready
         console.log("[WarMode] Nation nuke:", targetCell.targetLabel);
       }
     } catch (err) {
@@ -596,6 +595,12 @@ export function useGame() {
     setState(next);
   }, []);
 
+  const clearVictory = useCallback(() => {
+    const next = clearWarModeVictory(stateRef.current);
+    stateRef.current = next;
+    setState(next);
+  }, []);
+
   return {
     state,
     hydrated,
@@ -628,5 +633,6 @@ export function useGame() {
     forceEndWarMode,
     canEnterWarMode: () => canEnterWarMode(stateRef.current),
     markTargetTutorialSeen: markTargetTutorialSeenFn,
+    clearWarModeVictory: clearVictory,
   };
 }

@@ -10,9 +10,9 @@ import { NukedLockModal } from "@/components/NukedLockModal";
 import { OpsJailModal } from "@/components/OpsJailModal";
 import { GlobalStrikeToast } from "@/components/GlobalStrikeToast";
 import { GlobalOpsEventToast } from "@/components/GlobalOpsEventToast";
+import { WarModeVictoryModal } from "@/components/war/WarModeVictoryModal";
 import type { useGame } from "@/lib/game-state";
 import { isCorrectSide, countHybridsOnSide } from "@/lib/game/helpers";
-import { BOARD_SIZE } from "@/lib/constants";
 import { toast } from "sonner";
 
 export function GameModals({
@@ -50,20 +50,17 @@ export function GameModals({
 }) {
   const pending = game.state.pendingHybrid;
 
-  // Determine if this pending hybrid will push a side to ≥ 14
   let conquestSide: "dog" | "cat" | null = null;
   let hybridCountOnSide = 0;
 
   if (pending) {
     const targetSide = isCorrectSide(pending.to, "dog") ? "dog" : "cat";
     hybridCountOnSide = countHybridsOnSide(game.state.board, targetSide);
-    // +1 because the pending hybrid will be placed
     if (hybridCountOnSide + 1 >= 14) {
       conquestSide = targetSide;
     }
   }
 
-  // Also show if the flag is already true and there is a pending hybrid
   if (
     !conquestSide &&
     pending &&
@@ -74,24 +71,16 @@ export function GameModals({
   }
 
   const showConquest =
-    !!pending &&
-    !!conquestSide &&
-    !showCocoonModal &&
-    !showResultModal;
+    !!pending && !!conquestSide && !showCocoonModal && !showResultModal;
 
   const showNormalHybrid =
-    !!pending &&
-    !showConquest &&
-    !showCocoonModal &&
-    !showResultModal;
+    !!pending && !showConquest && !showCocoonModal && !showResultModal;
 
   const handleMassSacrifice = () => {
     if (!conquestSide) return;
 
-    // First place the pending hybrid (keep)
     handleResolveHybrid("keep");
 
-    // Then mass sacrifice the whole side
     setTimeout(() => {
       const result = game.sacrificeConqueredSide(conquestSide!);
       if (result.ok) {
@@ -112,6 +101,16 @@ export function GameModals({
       <OpsJailModal />
       <GlobalStrikeToast />
       <GlobalOpsEventToast />
+
+      {/* War Mode Victory Modal */}
+      <WarModeVictoryModal
+        warMode={game.state.warMode}
+        onClose={() => {
+          if (typeof game.clearWarModeVictory === "function") {
+            game.clearWarModeVictory();
+          }
+        }}
+      />
 
       <DailyBonusModal
         open={showDaily}
@@ -148,7 +147,6 @@ export function GameModals({
         }}
       />
 
-      {/* ── CONQUEST EVENT (replaces normal hybrid modal at 14+) ── */}
       <ConquestModal
         open={showConquest}
         side={conquestSide || "cat"}
@@ -156,7 +154,6 @@ export function GameModals({
         onMassSacrifice={handleMassSacrifice}
       />
 
-      {/* ── Normal hybrid modal (only when NOT conquest) ── */}
       <HybridModal
         open={showNormalHybrid}
         onResolve={(choice) => {

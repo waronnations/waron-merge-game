@@ -3,20 +3,20 @@ import { useEffect } from "react";
 import type { WarModeState } from "@/lib/game/types";
 
 interface Props {
-  warMode: WarModeState;
+  warMode: WarModeState | null | undefined;
   onClose: () => void;
 }
 
 export function WarModeVictoryModal({ warMode, onClose }: Props) {
-  const show = warMode.victory === true && !warMode.active;
+  const show = !!(warMode?.victory === true && !warMode?.active);
 
   useEffect(() => {
     if (!show) return;
-    const t = setTimeout(onClose, 6500);
+    const t = setTimeout(onClose, 8000); // auto-close after 8s as backup
     return () => clearTimeout(t);
   }, [show, onClose]);
 
-  if (!show) return null;
+  if (!show || !warMode) return null;
 
   const isDogWin = warMode.frontLine <= 5;
   const title = isDogWin ? "WARDOG VICTORY" : "WARCAT VICTORY";
@@ -35,7 +35,7 @@ export function WarModeVictoryModal({ warMode, onClose }: Props) {
 
         <div className="mb-5 space-y-1 text-sm text-zinc-400">
           <div>Front Line: {Math.round(warMode.frontLine)}</div>
-          <div>Control Generated: {Math.floor(warMode.controlGenerated)}</div>
+          <div>Control Generated: {Math.floor(warMode.controlGenerated || 0)}</div>
         </div>
 
         <div className="mb-6 rounded-xl bg-white/5 py-3 text-sm font-bold text-white">
