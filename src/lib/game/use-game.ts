@@ -72,6 +72,7 @@ import {
   battlefieldStrikeFn,
   announceLiveTargetFn,
 } from "@/lib/battlefield.functions";
+import { stripAllTargetCells } from "./war-targets";
 
 export type { DailyClaimResult, LocalRecoverResult };
 
@@ -83,7 +84,6 @@ async function fireRealTargetAction(attacker: any, targetCell: any) {
     const label = targetCell.targetLabel || "Enemy";
     const type = targetCell.targetType as "nation" | "player";
 
-    // Always announce via proper server function (works from the client)
     await announceLiveTargetFn({
       data: {
         type,
@@ -92,7 +92,6 @@ async function fireRealTargetAction(attacker: any, targetCell: any) {
       },
     });
 
-    // Real OPS strike only for player targets
     if (type === "player") {
       let weaponId: "knife" | "pistol" | "rifle" = "knife";
       if (attacker.tier >= 4 || attacker.faction === "hybrid") weaponId = "rifle";
@@ -119,7 +118,6 @@ export function useGame() {
   const localBoardLockUntilRef = useRef(0);
   const treasuryZoneRef = useRef<EnergyTreasuryZone>("yellow");
 
-  // Real recent players from OPS Kill Feed
   const realPlayers = useRecentOpsPlayers(25);
 
   const bumpBoardRevision = () => {
@@ -127,10 +125,25 @@ export function useGame() {
     localBoardLockUntilRef.current = Date.now() + LOCAL_BOARD_LOCK_MS;
   };
 
+  // Load + strip any sticky local-only targets left from a previous session
   useEffect(() => {
     const loaded = load();
-    stateRef.current = loaded;
-    setState(loaded);
+    const board = stripAllTargetCells(loaded.board ?? []);
+    const cleaned: GameState = {
+      ...loaded,
+      board,
+      warMode: loaded.warMode
+        ? {
+            ...loaded.warMode,
+            // Keep targets list only while War Mode is still active
+            targets: loaded.warMode.active
+              ? loaded.warMode.targets ?? []
+              : [],
+          }
+        : loaded.warMode,
+    };
+    stateRef.current = cleaned;
+    setState(cleaned);
     setHydrated(true);
   }, []);
 
@@ -198,15 +211,16 @@ export function useGame() {
     return () => clearInterval(interval);
   }, []);
 
-  // War Mode ticker + target spawning with real players
+  // War Mode ticker + target spawning (local-only)
+  // Also runs clean when War Mode is off so sticky cells die
   useEffect(() => {
     if (!hydrated) return;
     const id = setInterval(() => {
       const current = stateRef.current;
-      if (!current.warMode?.active) return;
-
       let next = tickWarMode(current);
-      next = afterMergeWarMode(next, realPlayers);
+      if (current.warMode?.active) {
+        next = afterMergeWarMode(next, realPlayers);
+      }
       if (next !== current) {
         stateRef.current = next;
         setState(next);
@@ -258,7 +272,6 @@ export function useGame() {
       const b = s.board[to];
       if (!a || !b) return { ok: false };
 
-      // Live Targets can be attacked even when energy is low (cost is 0)
       const isTargetAttack = !!(b.isTarget && a.faction !== "target");
       if (!isTargetAttack && s.energy < ENERGY_PER_MERGE) return { ok: false };
       if (
@@ -269,7 +282,6 @@ export function useGame() {
         return { ok: false };
       }
 
-      // 0. LIVE TARGET ATTACK
       const targetAttack = computeTargetAttack(s, from, to);
       if (targetAttack) {
         let nextState = targetAttack.nextState;
@@ -286,7 +298,6 @@ export function useGame() {
         };
       }
 
-      // 1. Classic Hybrid Clash
       const clash = computeHybridClash(s, from, to, comboCount);
       if (clash) {
         let nextState = afterMergeWarMode(clash.nextState, realPlayers);
@@ -320,7 +331,6 @@ export function useGame() {
         return clash.result;
       }
 
-      // 2. Hybrid ↔ Hybrid
       const hybridMerge = computeHybridMerge(s, from, to, comboMult, comboCount);
       if (hybridMerge) {
         let nextState = afterMergeWarMode(hybridMerge.nextState, realPlayers);
@@ -330,7 +340,6 @@ export function useGame() {
         return hybridMerge.result;
       }
 
-      // 3. Normal merge
       const merged = computeNormalMerge(s, from, to, comboMult, comboCount);
       if (!merged) return { ok: false };
 
@@ -343,7 +352,6 @@ export function useGame() {
     [realPlayers],
   );
 
-  // ─── Rest of actions ───────────────────────────────────────────
   const swap = useCallback((from: number, to: number) => {
     setState((s) => {
       if (from === to) return s;
@@ -559,8 +567,13 @@ export function useGame() {
         localBoardLockUntil: localBoardLockUntilRef.current,
       });
       if (!preferLocalBoard) boardRevisionRef.current = 0;
-      stateRef.current = next;
-      return next;
+      // Never reintroduce targets from server
+      const cleaned = {
+        ...next,
+        board: stripAllTargetCells(next.board),
+      };
+      stateRef.current = cleaned;
+      return cleaned;
     });
   }, []);
 
@@ -647,7 +660,6 @@ export function useGame() {
     applyServerState,
     applyServerEconomy,
 
-    // War Mode
     warMode: state.warMode,
     tryEnterWarMode,
     tryDeployUnit,

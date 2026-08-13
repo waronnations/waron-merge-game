@@ -25,6 +25,7 @@ import {
   maybeSpawnTarget,
   cleanExpiredTargets,
   attackTarget,
+  stripAllTargetCells,
 } from "./war-targets";
 
 export function createInitialWarMode(): WarModeState {
@@ -75,13 +76,15 @@ export function enterWarMode(s: GameState, now = Date.now()): GameState | null {
 }
 
 export function tickWarMode(s: GameState, now = Date.now()): GameState {
-  if (!s.warMode?.active) return s;
+  // Even if War Mode is off, clean sticky target cells
+  if (!s.warMode?.active) {
+    return cleanExpiredTargets(s, now);
+  }
 
   if (now >= s.warMode.endsAt) {
     return endWarMode(s, now);
   }
 
-  // Clean expired targets first
   let next = cleanExpiredTargets(s, now);
 
   let frontLine = next.warMode!.frontLine;
@@ -171,7 +174,6 @@ export function deployUnit(
   const cell = s.board[index];
   if (!cell) return { nextState: s, ok: false, reason: "Empty cell" };
 
-  // If it's a target, treat deploy as an attack
   if (cell.isTarget) {
     const result = attackTarget(s, index, now);
     return {
@@ -279,8 +281,12 @@ export function endWarMode(s: GameState, now = Date.now()): GameState {
 
   glory += Math.floor(s.warMode.controlGenerated * 12);
 
+  // Local-only: wipe every country/player cell when War Mode ends
+  const board = stripAllTargetCells(s.board);
+
   return {
     ...s,
+    board,
     glory: s.glory + glory,
     wardogTokens: s.wardogTokens + wardog,
     warcatTokens: s.warcatTokens + warcat,

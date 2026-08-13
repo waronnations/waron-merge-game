@@ -101,9 +101,10 @@ export const NATION_POOL = [
   { id: "sg", name: "Singapore", emoji: "🇸🇬" },
   { id: "sk", name: "Slovakia", emoji: "🇸🇰" },
   { id: "si", name: "Slovenia", emoji: "🇸🇮" },
-  { id: "za", name: "South Africa", emoji: "🇿🇦" },
+  { id: "za", name: "S.Africa", emoji: "🇿🇦" },
   { id: "kr", name: "S.Korea", emoji: "🇰🇷" },
   { id: "es", name: "Spain", emoji: "🇪🇸" },
+  { id: "lk", name: "Sri Lanka", emoji: "🇱🇰" },
   { id: "se", name: "Sweden", emoji: "🇸🇪" },
   { id: "ch", name: "Switzerland", emoji: "🇨🇭" },
   { id: "sy", name: "Syria", emoji: "🇸🇾" },
@@ -118,7 +119,8 @@ export const NATION_POOL = [
   { id: "uz", name: "Uzbekistan", emoji: "🇺🇿" },
   { id: "ve", name: "Venezuela", emoji: "🇻🇪" },
   { id: "vn", name: "Vietnam", emoji: "🇻🇳" },
-];
+  { id: "ye", name: "Yemen", emoji: "🇾🇪" },
+] as const;
 
 const FALLBACK_PLAYER_POOL = [
   "Shadow", "Viper", "Ghost", "Raven", "Blaze", "Nova", "Kane",
@@ -128,6 +130,16 @@ const FALLBACK_PLAYER_POOL = [
 
 function generateTargetId(): string {
   return `tgt_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+}
+
+function isTargetCell(cell: Cell | null | undefined): boolean {
+  if (!cell) return false;
+  return (
+    cell.isTarget === true ||
+    cell.faction === "target" ||
+    !!cell.targetId ||
+    !!cell.targetType
+  );
 }
 
 function findSpawnIndex(board: (Cell | null)[]): number | null {
@@ -142,7 +154,7 @@ function findSpawnIndex(board: (Cell | null)[]): number | null {
     return col === 2 || col === 3;
   });
   const pool = preferred.length > 0 ? preferred : empty;
-  return pool[Math.floor(Math.random() * pool.length)] ?? null;
+  return pool[Math.floor(Math.random() * pool.length)];
 }
 
 export function maybeSpawnTarget(
@@ -151,6 +163,7 @@ export function maybeSpawnTarget(
   realPlayers: string[] = [],
 ): GameState {
   if (!s.warMode?.active) return s;
+  if (TARGET_MAX_ON_BOARD <= 0) return s;
 
   let mergesSince = (s.warMode.mergesSinceLastTarget ?? 0) + 1;
   let targets = [...(s.warMode.targets || [])].filter((t) => t.expiresAt > now);
@@ -172,7 +185,7 @@ export function maybeSpawnTarget(
       let label: string;
 
       if (isNation) {
-        const nation = NATION_POOL[Math.floor(Math.random() * NATION_POOL.length)]!;
+        const nation = NATION_POOL[Math.floor(Math.random() * NATION_POOL.length)];
         nationId = nation.id;
         nationName = nation.name;
         nationEmoji = nation.emoji;
@@ -186,8 +199,8 @@ export function maybeSpawnTarget(
               Math.floor(Math.random() * FALLBACK_PLAYER_POOL.length)
             ];
         }
-        playerId = Math.floor(Math.random() * 900_000_000) + 100_000_000;
-        label = playerName!;
+        playerId = Math.floor(Math.random() * 900000000) + 100000000;
+        label = playerName;
       }
 
       const target: WarTarget = {
@@ -326,25 +339,54 @@ export function attackTarget(
   };
 }
 
+/**
+ * Remove expired targets AND any sticky target cells when War Mode is off.
+ * Local-only — never depends on Neon.
+ */
 export function cleanExpiredTargets(s: GameState, now = Date.now()): GameState {
-  if (!s.warMode?.active) return s;
-
-  const alive = (s.warMode.targets || []).filter((t) => t.expiresAt > now);
-  if (alive.length === (s.warMode.targets || []).length) return s;
-
   const board = [...s.board];
-  for (const t of s.warMode.targets || []) {
-    if (t.expiresAt <= now && board[t.boardIndex]?.targetId === t.id) {
-      board[t.boardIndex] = null;
+  let changed = false;
+
+  const activeTargets = s.warMode?.active
+    ? (s.warMode.targets || []).filter((t) => t.expiresAt > now)
+    : [];
+
+  const aliveIds = new Set(activeTargets.map((t) => t.id));
+
+  for (let i = 0; i < board.length; i++) {
+    const cell = board[i];
+    if (!isTargetCell(cell)) continue;
+
+    // War Mode off → wipe all target cells
+    // War Mode on → wipe if not in the alive list
+    if (!s.warMode?.active || !cell!.targetId || !aliveIds.has(cell!.targetId)) {
+      board[i] = null;
+      changed = true;
     }
   }
+
+  if (!s.warMode) {
+    return changed ? { ...s, board } : s;
+  }
+
+  const targetsUnchanged =
+    activeTargets.length === (s.warMode.targets || []).length;
+
+  if (!changed && targetsUnchanged) return s;
 
   return {
     ...s,
     board,
     warMode: {
       ...s.warMode,
-      targets: alive,
+      targets: activeTargets,
     },
   };
+}
+
+/** Strip every Live Target cell from a board (used on load / end War Mode). */
+export function stripAllTargetCells(
+  board: (Cell | null)[],
+): (Cell | null)[] {
+  return board.map((cell) => (isTargetCell(cell) ? null : cell));
 }
