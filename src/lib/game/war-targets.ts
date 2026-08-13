@@ -101,10 +101,9 @@ export const NATION_POOL = [
   { id: "sg", name: "Singapore", emoji: "🇸🇬" },
   { id: "sk", name: "Slovakia", emoji: "🇸🇰" },
   { id: "si", name: "Slovenia", emoji: "🇸🇮" },
-  { id: "za", name: "S.Africa", emoji: "🇿🇦" },
+  { id: "za", name: "South Africa", emoji: "🇿🇦" },
   { id: "kr", name: "S.Korea", emoji: "🇰🇷" },
   { id: "es", name: "Spain", emoji: "🇪🇸" },
-  { id: "lk", name: "Sri Lanka", emoji: "🇱🇰" },
   { id: "se", name: "Sweden", emoji: "🇸🇪" },
   { id: "ch", name: "Switzerland", emoji: "🇨🇭" },
   { id: "sy", name: "Syria", emoji: "🇸🇾" },
@@ -119,8 +118,7 @@ export const NATION_POOL = [
   { id: "uz", name: "Uzbekistan", emoji: "🇺🇿" },
   { id: "ve", name: "Venezuela", emoji: "🇻🇪" },
   { id: "vn", name: "Vietnam", emoji: "🇻🇳" },
-  { id: "ye", name: "Yemen", emoji: "🇾🇪" },
-] as const;
+];
 
 const FALLBACK_PLAYER_POOL = [
   "Shadow", "Viper", "Ghost", "Raven", "Blaze", "Nova", "Kane",
@@ -144,7 +142,7 @@ function findSpawnIndex(board: (Cell | null)[]): number | null {
     return col === 2 || col === 3;
   });
   const pool = preferred.length > 0 ? preferred : empty;
-  return pool[Math.floor(Math.random() * pool.length)];
+  return pool[Math.floor(Math.random() * pool.length)] ?? null;
 }
 
 export function maybeSpawnTarget(
@@ -174,7 +172,7 @@ export function maybeSpawnTarget(
       let label: string;
 
       if (isNation) {
-        const nation = NATION_POOL[Math.floor(Math.random() * NATION_POOL.length)];
+        const nation = NATION_POOL[Math.floor(Math.random() * NATION_POOL.length)]!;
         nationId = nation.id;
         nationName = nation.name;
         nationEmoji = nation.emoji;
@@ -188,8 +186,8 @@ export function maybeSpawnTarget(
               Math.floor(Math.random() * FALLBACK_PLAYER_POOL.length)
             ];
         }
-        playerId = Math.floor(Math.random() * 900000000) + 100000000;
-        label = playerName;
+        playerId = Math.floor(Math.random() * 900_000_000) + 100_000_000;
+        label = playerName!;
       }
 
       const target: WarTarget = {
@@ -261,7 +259,6 @@ export function attackTarget(
     return { nextState: s, ok: false, reason: "Not a target" };
   }
 
-  // Costs – when set to 0 they never block
   if (TARGET_ATTACK_ENERGY_COST > 0 && s.energy < TARGET_ATTACK_ENERGY_COST) {
     return { nextState: s, ok: false, reason: "Not enough energy — top up!" };
   }
@@ -280,7 +277,6 @@ export function attackTarget(
     return { nextState: s, ok: false, reason: "Target expired" };
   }
 
-  // Spend tokens (only if cost > 0)
   let wardog = s.wardogTokens;
   let warcat = s.warcatTokens;
   if (TARGET_ATTACK_TOKEN_COST > 0) {

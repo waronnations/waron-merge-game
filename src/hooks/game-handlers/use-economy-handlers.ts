@@ -69,10 +69,13 @@ export function useEconomyHandlers({
       if (!authenticated) {
         const local = game.recoverEnergy?.(payWith) ?? game.recoverEnergy?.();
         if (local && typeof local === "object" && "ok" in local && !local.ok) {
-          if ((local as { reason?: string }).reason === "no_tokens") {
+          const reason = (local as { reason?: string }).reason;
+          if (reason === "no_tokens") {
             toast.error(`Not enough unclaimed ${tokenLabel(payWith)}`, {
               duration: 1400,
             });
+          } else if (reason === "energy_full") {
+            toast.error("Energy is already full", { duration: 1400 });
           }
           return;
         }
@@ -94,6 +97,7 @@ export function useEconomyHandlers({
               res.reason === "no_tokens" ||
               res.reason === "no_progress"
             ) {
+              // Force UI to match server state (fixes the "0 energy but already full" bug)
               void pullFromServer();
             }
             spendErrorToast(res.reason, payWith);

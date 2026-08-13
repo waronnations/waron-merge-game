@@ -68,40 +68,42 @@ import {
 } from "./war-mode";
 import type { HybridCommanderAbilityId } from "@/lib/constants/war-mode";
 import { useRecentOpsPlayers } from "@/hooks/use-recent-ops-players";
-import { battlefieldStrikeFn } from "@/lib/battlefield.functions";
+import {
+  battlefieldStrikeFn,
+  announceLiveTargetFn,
+} from "@/lib/battlefield.functions";
 
 export type { DailyClaimResult, LocalRecoverResult };
 
 const ZONE_REFRESH_MS = 12_000;
 
-/** Fire real OPS strike or Nation Nuke announcement to group + possible DM */
+/** Fire real OPS strike + reliable group announcement for Live Targets */
 async function fireRealTargetAction(attacker: any, targetCell: any) {
   try {
     const label = targetCell.targetLabel || "Enemy";
+    const type = targetCell.targetType as "nation" | "player";
 
-    if (targetCell.targetType === "player") {
+    // Always announce via proper server function (works from the client)
+    await announceLiveTargetFn({
+      data: {
+        type,
+        label,
+        glory: type === "nation" ? 480 : 320,
+      },
+    });
+
+    // Real OPS strike only for player targets
+    if (type === "player") {
       let weaponId: "knife" | "pistol" | "rifle" = "knife";
       if (attacker.tier >= 4 || attacker.faction === "hybrid") weaponId = "rifle";
       else if (attacker.tier >= 3) weaponId = "pistol";
 
-      // Real OPS strike → group announcement + history + possible DM
       await battlefieldStrikeFn({
         data: {
           target: label,
           weaponId,
         },
       });
-    }
-
-    if (targetCell.targetType === "nation") {
-      // Always announce simulated nation nuke to @waronnations
-      const { announceToGroup } = await import("@/lib/notify.server");
-      announceToGroup(
-        `☢️ NATION NUKE CONFIRMED\n\n` +
-          `A Warlord just nuked <b>${label}</b> from the Live Battlefield!\n` +
-          `+480 Glory · Control shifted\n\n` +
-          `The pack is hungry. Feed it 🐺`,
-      );
     }
   } catch (err) {
     console.warn("[WarMode] Server target action failed", err);
@@ -256,7 +258,7 @@ export function useGame() {
       const b = s.board[to];
       if (!a || !b) return { ok: false };
 
-      // FIXED: Live Targets bypass the hard energy gate when cost is free
+      // Live Targets can be attacked even when energy is low (cost is 0)
       const isTargetAttack = !!(b.isTarget && a.faction !== "target");
       if (!isTargetAttack && s.energy < ENERGY_PER_MERGE) return { ok: false };
       if (
@@ -267,7 +269,7 @@ export function useGame() {
         return { ok: false };
       }
 
-      // 0. LIVE TARGET ATTACK (Player STRIKE or Nation NUKE)
+      // 0. LIVE TARGET ATTACK
       const targetAttack = computeTargetAttack(s, from, to);
       if (targetAttack) {
         let nextState = targetAttack.nextState;
@@ -276,7 +278,6 @@ export function useGame() {
         setState(nextState);
         bumpBoardRevision();
 
-        // Fire real OPS / Nuke in background → group + possible DM
         void fireRealTargetAction(a, b);
 
         return {

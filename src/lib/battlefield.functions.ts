@@ -27,6 +27,7 @@ import {
   getOpsJailStatus,
   type PayToken,
 } from "@/lib/battlefield.server";
+import { announceToGroup } from "@/lib/notify.server";
 
 const PayTokenSchema = z.enum(["wardog", "warcat"]);
 const WeaponIdSchema = z.enum(["knife", "pistol", "rifle"]);
@@ -197,3 +198,43 @@ export const getOpsJailStatusFn = createServerFn({ method: "GET" }).handler(
     return getOpsJailStatus(userId);
   },
 );
+
+/**
+ * Announce a Live Target hit (nation nuke or player strike) to @waronnations.
+ * Called from the client after a successful board attack.
+ */
+export const announceLiveTargetFn = createServerFn({ method: "POST" })
+  .validator((input: unknown) =>
+    z
+      .object({
+        type: z.enum(["nation", "player"]),
+        label: z.string().min(1).max(64),
+        glory: z.number().optional(),
+      })
+      .parse(input),
+  )
+  .handler(async ({ data }) => {
+    // Soft auth – still works even if session is briefly missing
+    try {
+      await requireUserId();
+    } catch {
+      /* allow announce anyway */
+    }
+
+    if (data.type === "nation") {
+      announceToGroup(
+        `☢️ NATION NUKE CONFIRMED\n\n` +
+          `A Warlord just nuked <b>${data.label}</b> from the Live Battlefield!\n` +
+          `+${data.glory ?? 480} Glory · Control shifted\n\n` +
+          `The pack is hungry. Feed it 🐺`,
+      );
+    } else {
+      announceToGroup(
+        `⚔️ OPS STRIKE\n\n` +
+          `A Warlord struck <b>${data.label}</b> on the Live Battlefield!\n` +
+          `+${data.glory ?? 320} Glory\n\n` +
+          `The pack is hungry. Feed it 🐺`,
+      );
+    }
+    return { ok: true as const };
+  });

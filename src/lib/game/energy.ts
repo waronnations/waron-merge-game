@@ -84,7 +84,8 @@ export type RecoverEnergyOutcome =
  * Authenticated path goes through serverRecoverEnergy (also unclaimed only).
  */
 export function computeRecoverEnergy(s: GameState): RecoverEnergyOutcome {
-  if (s.energy >= MAX_ENERGY) {
+  // Tolerance for float noise / tiny desync so 0 energy never falsely reports full
+  if (s.energy >= MAX_ENERGY - 0.5) {
     return { ok: false, reason: "energy_full" };
   }
   const total = s.wardogTokens + s.warcatTokens;
