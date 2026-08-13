@@ -203,6 +203,10 @@ export async function serverPurchaseShopItem(
  * Board energy recover — UNCLAIMED playable jettons only.
  * Does not touch top-up / spendable balances.
  * This is the only place in the game that spends unclaimed tokens.
+ *
+ * FIX: apply passive regen BEFORE the "full" check so client/server
+ * energy desync (client shows 0, server still has old high value)
+ * no longer falsely returns energy_full.
  */
 export async function serverRecoverEnergy(
   userId: number,
@@ -230,8 +234,27 @@ export async function serverRecoverEnergy(
     loaded,
   );
 
-  const currentEnergy = clampServerEnergy(Number(state.energy ?? 0), 0);
-  if (currentEnergy >= MAX_ENERGY - 0.001) {
+  // ── Apply passive regen BEFORE the "full" check ──────────────────────
+  const now = Date.now();
+  let currentEnergy = clampServerEnergy(Number(state.energy ?? 0), 0);
+  const lastRegen =
+    typeof state.lastRegenAt === "number" && state.lastRegenAt > 0
+      ? state.lastRegenAt
+      : now;
+
+  // Base regen rate (1 energy / 75s) — same as ENERGY_REGEN_MS
+  const ENERGY_REGEN_MS = 75_000;
+  const gained = Math.floor((now - lastRegen) / ENERGY_REGEN_MS);
+  if (gained > 0 && currentEnergy < MAX_ENERGY) {
+    currentEnergy = clampServerEnergy(currentEnergy + gained, 0);
+    state.energy = currentEnergy;
+    state.lastRegenAt = lastRegen + gained * ENERGY_REGEN_MS;
+  }
+
+  // Only reject when truly full (0.5 tolerance for float noise)
+  if (currentEnergy >= MAX_ENERGY - 0.5) {
+    // Persist any regen we applied so the next pull is consistent
+    await writeProgress(userId, state, { touchSyncClock: false });
     return { ok: false, reason: "energy_full" };
   }
 
@@ -248,6 +271,7 @@ export async function serverRecoverEnergy(
     currentEnergy + RECOVER_ENERGY_AMOUNT,
     0,
   );
+  state.lastRegenAt = now;
 
   await sql`
     INSERT INTO shop_ledger (user_id, item_id, cost)

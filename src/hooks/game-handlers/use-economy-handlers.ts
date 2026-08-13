@@ -90,16 +90,9 @@ export function useEconomyHandlers({
         try {
           const res = await recoverEnergy({ data: { payWith } });
           if (!res.ok) {
-            if (
-              res.reason === "energy_full" ||
-              res.reason === "already_full" ||
-              res.reason === "insufficient_playable" ||
-              res.reason === "no_tokens" ||
-              res.reason === "no_progress"
-            ) {
-              // Force UI to match server state (fixes the "0 energy but already full" bug)
-              void pullFromServer();
-            }
+            // Always await pull so UI matches server energy
+            // (fixes "0 energy on client / full on server" desync)
+            await pullFromServer();
             spendErrorToast(res.reason, payWith);
             return;
           }
