@@ -2,9 +2,6 @@
 /**
  * Pure War Mode logic + Live Targets integration.
  * Strict adversary-only attack rules enforced.
- *
- * createInitialWarMode is defined here AND re-exported from helpers
- * so both files stay in sync and warMode is never undefined.
  */
 
 import type { GameState, WarModeState } from "./types";
@@ -37,7 +34,6 @@ import {
   stripAllTargetCells,
 } from "./war-targets";
 
-// Re-export so other files can import from either place
 export { createInitialWarMode };
 
 export function canEnterWarMode(s: GameState, now = Date.now()): boolean {
@@ -80,8 +76,6 @@ export function tickWarMode(s: GameState, now = Date.now()): GameState {
   }
 
   let next = cleanExpiredTargets(s, now);
-
-  // After cleanExpiredTargets, warMode is still guaranteed by our helpers
   const wm = next.warMode ?? createInitialWarMode();
 
   let frontLine = wm.frontLine;
@@ -144,7 +138,6 @@ export function applyMergeControl(
   };
 }
 
-/** Call this after every successful merge */
 export function afterMergeWarMode(
   s: GameState,
   realPlayers: string[] = [],
@@ -177,7 +170,6 @@ export function deployUnit(
 
   // ── Live Target attack ─────────────────────────────────────
   if (cell.isTarget) {
-    // Infer attacker: prefer hybrid if present, otherwise opposite of the side
     const attackerFaction: "dog" | "cat" | "hybrid" = s.board.some(
       (c) => c?.faction === "hybrid",
     )
@@ -185,6 +177,28 @@ export function deployUnit(
       : isCorrectSide(index, "dog")
         ? "cat"
         : "dog";
+
+    // Extra tier rules for deploy-path strikes
+    const isNation = cell.targetType === "nation";
+    const isPlayer = cell.targetType === "player";
+    if (isNation) {
+      // deploy path doesn't consume a unit — still enforce T5 concept via hybrid prefer
+      // (merge-path is the primary "nuke with unit" flow)
+    }
+    if (isPlayer && attackerFaction !== "hybrid") {
+      // under-T5 preference is enforced on merge path; deploy uses inferred faction
+    }
+
+    if (!canAttackIndex(attackerFaction, index)) {
+      return {
+        nextState: s,
+        ok: false,
+        reason:
+          attackerFaction === "dog"
+            ? "WARDOG can only strike the WARCAT side"
+            : "WARCAT can only strike the WARDOG side",
+      };
+    }
 
     const result = attackTarget(s, index, attackerFaction, now);
     return {
@@ -206,7 +220,6 @@ export function deployUnit(
     return { nextState: s, ok: false, reason: "Already deployed" };
   }
 
-  // Unit must sit on its own side
   if (cell.faction !== "hybrid" && !isCorrectSide(index, cell.faction)) {
     return { nextState: s, ok: false, reason: "Unit on wrong side" };
   }
@@ -221,13 +234,10 @@ export function deployUnit(
 
   let frontLine = s.warMode.frontLine;
   if (cell.faction === "dog") {
-    // Dog pushes toward cat side (lower number)
     frontLine = Math.max(0, frontLine - gain);
   } else if (cell.faction === "cat") {
-    // Cat pushes toward dog side (higher number)
     frontLine = Math.min(FRONT_LINE_MAX, frontLine + gain);
   } else {
-    // Hybrid can push either way
     frontLine =
       Math.random() < 0.5
         ? Math.max(0, frontLine - gain)

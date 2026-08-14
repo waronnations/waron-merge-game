@@ -10,7 +10,6 @@ import {
   TARGET_PLAYER_REWARD,
 } from "@/lib/constants/war-targets";
 import { updateConquerFlags, isCorrectSide, canAttackIndex } from "./helpers";
-import { BOARD_SIZE } from "@/lib/constants";
 
 /** Real countries with emoji flags */
 export const NATION_POOL = [
@@ -97,36 +96,40 @@ export const NATION_POOL = [
   { id: "qa", name: "Qatar", emoji: "🇶🇦" },
   { id: "ro", name: "Romania", emoji: "🇷🇴" },
   { id: "ru", name: "Russia", emoji: "🇷🇺" },
-  { id: "sa", name: "Saudi Arabia", emoji: "🇸🇦" },
+  { id: "sa", name: "Saudi", emoji: "🇸🇦" },
   { id: "rs", name: "Serbia", emoji: "🇷🇸" },
   { id: "sg", name: "Singapore", emoji: "🇸🇬" },
   { id: "sk", name: "Slovakia", emoji: "🇸🇰" },
   { id: "si", name: "Slovenia", emoji: "🇸🇮" },
-  { id: "za", name: "South Africa", emoji: "🇿🇦" },
+  { id: "za", name: "S.Africa", emoji: "🇿🇦" },
   { id: "kr", name: "S.Korea", emoji: "🇰🇷" },
   { id: "es", name: "Spain", emoji: "🇪🇸" },
+  { id: "lk", name: "Sri Lanka", emoji: "🇱🇰" },
   { id: "se", name: "Sweden", emoji: "🇸🇪" },
   { id: "ch", name: "Switzerland", emoji: "🇨🇭" },
+  { id: "sy", name: "Syria", emoji: "🇸🇾" },
   { id: "tw", name: "Taiwan", emoji: "🇹🇼" },
   { id: "th", name: "Thailand", emoji: "🇹🇭" },
   { id: "tr", name: "Turkey", emoji: "🇹🇷" },
   { id: "ua", name: "Ukraine", emoji: "🇺🇦" },
   { id: "ae", name: "UAE", emoji: "🇦🇪" },
-  { id: "gb", name: "United Kingdom", emoji: "🇬🇧" },
+  { id: "gb", name: "UK", emoji: "🇬🇧" },
   { id: "us", name: "USA", emoji: "🇺🇸" },
   { id: "uy", name: "Uruguay", emoji: "🇺🇾" },
   { id: "uz", name: "Uzbekistan", emoji: "🇺🇿" },
   { id: "ve", name: "Venezuela", emoji: "🇻🇪" },
   { id: "vn", name: "Vietnam", emoji: "🇻🇳" },
-];
+  { id: "ye", name: "Yemen", emoji: "🇾🇪" },
+] as const;
 
 const FALLBACK_PLAYER_POOL = [
-  "ShadowFox", "IronPaw", "NeonClaw", "BlitzDog", "VoidCat",
-  "StormFang", "CyberMutt", "QuantumKitty", "ApexHound", "GhostWhisker",
+  "Shadow", "Viper", "Ghost", "Raven", "Blaze", "Nova", "Kane",
+  "Rex", "Ace", "Wolf", "Storm", "Phoenix", "Drake", "Lynx", "Zero",
+  "Reaper", "Spectre", "Titan", "Cobra", "Hawk",
 ];
 
 function generateTargetId(): string {
-  return `tgt_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
+  return `tgt_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
 }
 
 function isTargetCell(cell: Cell | null | undefined): boolean {
@@ -140,8 +143,7 @@ function isTargetCell(cell: Cell | null | undefined): boolean {
 }
 
 /**
- * Prefer empty cells that are balanced between sides.
- * Never spawn on a cell that already has a unit.
+ * Prefer empty cells on both halves (adversary board feel).
  */
 function findSpawnIndex(board: (Cell | null)[]): number | null {
   const dogEmpty: number[] = [];
@@ -153,10 +155,10 @@ function findSpawnIndex(board: (Cell | null)[]): number | null {
     else catEmpty.push(i);
   }
 
-  // Prefer the side that currently has fewer targets / more space
-  const preferDog = dogEmpty.length >= catEmpty.length
-    ? Math.random() < 0.55
-    : Math.random() < 0.45;
+  const preferDog =
+    dogEmpty.length >= catEmpty.length
+      ? Math.random() < 0.55
+      : Math.random() < 0.45;
 
   const primary = preferDog ? dogEmpty : catEmpty;
   const secondary = preferDog ? catEmpty : dogEmpty;
@@ -194,14 +196,16 @@ export function maybeSpawnTarget(
       let label: string;
 
       if (isNation) {
-        const nation = NATION_POOL[Math.floor(Math.random() * NATION_POOL.length)]!;
+        const nation =
+          NATION_POOL[Math.floor(Math.random() * NATION_POOL.length)]!;
         nationId = nation.id;
         nationName = nation.name;
         nationEmoji = nation.emoji;
         label = nation.name;
       } else {
         if (realPlayers.length > 0) {
-          playerName = realPlayers[Math.floor(Math.random() * realPlayers.length)];
+          playerName =
+            realPlayers[Math.floor(Math.random() * realPlayers.length)];
         } else {
           playerName =
             FALLBACK_PLAYER_POOL[
@@ -264,8 +268,7 @@ export function maybeSpawnTarget(
 
 /**
  * Attack a Live Target.
- * Enforces: only the correct faction may strike that side.
- * (dog → cat side only, cat → dog side only, hybrid → either)
+ * Enforces adversary-side only (dog → cat half, cat → dog half).
  */
 export function attackTarget(
   s: GameState,
@@ -287,7 +290,7 @@ export function attackTarget(
     return { nextState: s, ok: false, reason: "Not a target" };
   }
 
-  // ── NEW RULE: side restriction ──────────────────────────────
+  // Adversary side only
   if (!canAttackIndex(attackerFaction, boardIndex)) {
     return {
       nextState: s,
@@ -311,7 +314,11 @@ export function attackTarget(
     s.warcatTokens >= TARGET_ATTACK_TOKEN_COST;
 
   if (!hasTokens) {
-    return { nextState: s, ok: false, reason: "Need tokens — top up to strike!" };
+    return {
+      nextState: s,
+      ok: false,
+      reason: "Need tokens — top up to strike!",
+    };
   }
 
   const target = s.warMode.targets.find((t) => t.id === cell.targetId);
@@ -338,7 +345,6 @@ export function attackTarget(
   const targets = s.warMode.targets.filter((t) => t.id !== target.id);
 
   let frontLine = s.warMode.frontLine;
-  // Direction of push depends on which side was attacked
   const attackedDogSide = isCorrectSide(boardIndex, "dog");
   const push = attackedDogSide ? -reward.control : reward.control;
   frontLine = Math.max(0, Math.min(100, frontLine + push));
@@ -412,5 +418,5 @@ export function cleanExpiredTargets(s: GameState, now = Date.now()): GameState {
 export function stripAllTargetCells(
   board: (Cell | null)[],
 ): (Cell | null)[] {
-  return board.map((cell) => (isTargetCell(cell) ? null : cell));
+  return board.map((c) => (isTargetCell(c) ? null : c));
 }

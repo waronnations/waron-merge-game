@@ -14,6 +14,7 @@ import {
 import type { GameState, MergeResult } from "./types";
 import {
   isCorrectSide,
+  canAttackIndex,
   bumpDailyQuest,
   updateTaskProgress,
   updateConquerFlags,
@@ -33,9 +34,13 @@ export interface HybridClashOutcome {
 }
 
 /**
- * Attack a Live Target by merging into it
- * Player  → any unit (T1+) or Hybrid
- * Nation  → T5 or Hybrid
+ * Attack a Live Target by merging into it (War Mode only).
+ *
+ * Rules:
+ * - Must be on the adversary half only
+ *   (dog → cat side, cat → dog side, hybrid → either)
+ * - Nation (country) → T5 or Hybrid only
+ * - Telegram player → under T5 only (tier 1–4)
  */
 export function computeTargetAttack(
   s: GameState,
@@ -47,30 +52,39 @@ export function computeTargetAttack(
 
   if (!attacker || !target || !target.isTarget) return null;
   if (attacker.faction === "target") return null;
+  if (!s.warMode?.active) return null;
+
+  // Adversary-side only
+  if (!canAttackIndex(attacker.faction, to)) return null;
 
   const isNation = target.targetType === "nation";
   const isPlayer = target.targetType === "player";
 
-  // Rules
-  if (isPlayer) {
-    // Any unit can strike a player
-  } else if (isNation) {
-    // Only T5 or Hybrid can nuke
+  if (isNation) {
+    // Country → T5 or Hybrid only
     if (attacker.tier < MAX_TIER && attacker.faction !== "hybrid") return null;
+  } else if (isPlayer) {
+    // Telegram user → under T5 only (hybrids allowed)
+    if (attacker.faction !== "hybrid" && attacker.tier >= MAX_TIER) return null;
   } else {
     return null;
   }
 
-  // Perform the attack
-  const attackResult = attackTarget(s, to);
+  const attackResult = attackTarget(
+    s,
+    to,
+    attacker.faction === "hybrid"
+      ? "hybrid"
+      : attacker.faction === "dog"
+        ? "dog"
+        : "cat",
+  );
   if (!attackResult.ok) return null;
 
-  // Remove the attacker unit
+  // Consume the attacker unit
   const board = [...attackResult.nextState.board];
   board[from] = null;
 
-  // Energy: only subtract ENERGY_PER_MERGE when target cost is free (0)
-  // so free attacks still cost the normal merge energy (consistent with tryMerge)
   const energyCost =
     TARGET_ATTACK_ENERGY_COST > 0 ? TARGET_ATTACK_ENERGY_COST : ENERGY_PER_MERGE;
 

@@ -105,7 +105,7 @@ export async function serverCommitMerge(
 
   // ── LIVE TARGET ATTACK (War Mode) – SERVER AUTHORITATIVE ────────────
   if ((b as any).isTarget && a.faction !== "target") {
-    // STRICT RULE: only adversary side
+    // STRICT: adversary half only
     if (!canAttackIndex(a.faction, to)) {
       return {
         ok: false,
@@ -119,9 +119,16 @@ export async function serverCommitMerge(
     }
 
     const isNation = (b as any).targetType === "nation";
-    // Nation targets require T5 or hybrid
+    const isPlayer = (b as any).targetType === "player";
+
+    // Nation (country) → T5 or hybrid only
     if (isNation && a.tier < MAX_TIER && a.faction !== "hybrid") {
-      return { ok: false, reason: "invalid_merge" };
+      return { ok: false, reason: "nation_requires_t5" };
+    }
+
+    // Telegram player → under T5 only
+    if (isPlayer && a.faction !== "hybrid" && a.tier >= MAX_TIER) {
+      return { ok: false, reason: "player_requires_under_t5" };
     }
 
     board[from] = null;
@@ -132,7 +139,6 @@ export async function serverCommitMerge(
     const gloryGain = isNation ? 480 : 320;
     state.glory = Number(state.glory) + gloryGain;
 
-    // Optional: push front line if warMode exists on state
     if ((state as any).warMode?.active) {
       const wm = (state as any).warMode;
       const attackedDogSide = isCorrectSide(to, "dog");
@@ -140,7 +146,6 @@ export async function serverCommitMerge(
       const push = attackedDogSide ? -control : control;
       wm.frontLine = Math.max(0, Math.min(100, (wm.frontLine ?? 50) + push));
       wm.controlGenerated = (wm.controlGenerated ?? 0) + control;
-      // remove the target from the list
       if (Array.isArray(wm.targets)) {
         wm.targets = wm.targets.filter(
           (t: any) => t.id !== (b as any).targetId,
@@ -183,7 +188,7 @@ export async function serverCommitMerge(
     return { ok: true, state, isHybrid: true };
   }
 
-  // Normal same-faction merge (own side only – already correct)
+  // Normal same-faction merge (own side only)
   if (a.faction !== b.faction || a.tier !== b.tier || a.tier >= MAX_TIER) {
     return { ok: false, reason: "invalid_merge" };
   }
