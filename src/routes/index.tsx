@@ -124,8 +124,12 @@ function WaronMergePage() {
   }, [game.hydrated, game.canClaimDaily, game.state.hasSeenTutorial]);
 
   // Show victory modal when War Mode ends with victory
+  // FULLY SAFE optional chaining — never crash if warMode is missing
   useEffect(() => {
-    if (game.state.warMode?.victory === true && !game.state.warMode.active) {
+    if (
+      game.state.warMode?.victory === true &&
+      game.state.warMode?.active === false
+    ) {
       setShowWarVictory(true);
     }
   }, [game.state.warMode?.victory, game.state.warMode?.active]);
@@ -216,6 +220,7 @@ function WaronMergePage() {
   // silence unused if claims stay only outside OPS
   void handleClaimTask;
   void handleClaimDailyQuest;
+  void showWarVictory; // used by modal visibility logic via effect
 
   if (!game.hydrated) {
     return (
@@ -363,7 +368,7 @@ function WaronMergePage() {
         handleHybridWithArt={handleHybridWithArt}
       />
 
-      {/* War Mode Victory Modal */}
+      {/* War Mode Victory Modal — warMode can be undefined safely */}
       <WarModeVictoryModal
         warMode={game.state.warMode}
         onClose={() => setShowWarVictory(false)}

@@ -4,9 +4,10 @@ import { FrontLineBar } from "./FrontLineBar";
 import { HYBRID_COMMANDER_ABILITIES } from "@/lib/constants/war-mode";
 import type { WarModeState } from "@/lib/game/types";
 import type { HybridCommanderAbilityId } from "@/lib/constants/war-mode";
+import { createInitialWarMode } from "@/lib/game/helpers";
 
 interface Props {
-  warMode: WarModeState;
+  warMode: WarModeState | null | undefined;
   energy: number;
   onEnter: () => void;
   onDeploy: (index: number) => void;
@@ -16,13 +17,16 @@ interface Props {
 }
 
 export function WarModeOverlay({
-  warMode,
+  warMode: warModeProp,
   energy,
   onEnter,
   onActivateAbility,
   onForceEnd,
   canEnter,
 }: Props) {
+  // Never let warMode be undefined
+  const warMode = warModeProp ?? createInitialWarMode();
+
   const [now, setNow] = useState(Date.now());
 
   useEffect(() => {
@@ -31,7 +35,7 @@ export function WarModeOverlay({
     return () => clearInterval(id);
   }, [warMode.active]);
 
-  const remainingMs = Math.max(0, warMode.endsAt - now);
+  const remainingMs = Math.max(0, (warMode.endsAt ?? 0) - now);
   const remainingSec = Math.ceil(remainingMs / 1000);
   const minutes = Math.floor(remainingSec / 60);
   const seconds = remainingSec % 60;
@@ -71,8 +75,8 @@ export function WarModeOverlay({
       </div>
 
       <FrontLineBar
-        frontLine={warMode.frontLine}
-        controlGenerated={warMode.controlGenerated}
+        frontLine={warMode.frontLine ?? 50}
+        controlGenerated={warMode.controlGenerated ?? 0}
         active={true}
       />
 
@@ -81,7 +85,7 @@ export function WarModeOverlay({
         {(Object.keys(HYBRID_COMMANDER_ABILITIES) as HybridCommanderAbilityId[]).map(
           (id) => {
             const ability = HYBRID_COMMANDER_ABILITIES[id];
-            const isActive = warMode.activeAbilities.some(
+            const isActive = (warMode.activeAbilities ?? []).some(
               (a) => a.id === id && a.endsAt > now,
             );
             return (
@@ -103,7 +107,7 @@ export function WarModeOverlay({
         )}
       </div>
 
-      {/* Force end (debug / emergency) */}
+      {/* Force end */}
       <div className="px-3 pb-3">
         <button
           onClick={onForceEnd}

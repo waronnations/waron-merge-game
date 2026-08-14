@@ -10,9 +10,34 @@ import {
   STARTER_PACK,
 } from "@/lib/constants";
 import { getActiveEvents, getEnergyRegenMultiplier } from "@/lib/events";
-import type { Cell, DailyQuest, GameState, Task } from "./types";
+import type { Cell, DailyQuest, GameState, Task, WarModeState } from "./types";
 
 export const STORAGE_KEY = "waron-merge-v2";
+
+/** Always-safe default War Mode object. Never return undefined. */
+export function createInitialWarMode(): WarModeState {
+  return {
+    active: false,
+    startedAt: 0,
+    endsAt: 0,
+    frontLine: 50,
+    controlGenerated: 0,
+    lastPassiveAt: 0,
+    activeAbilities: [],
+    cooldownUntil: 0,
+    targets: [],
+    mergesSinceLastTarget: 0,
+    hasSeenTargetTutorial: false,
+    victory: false,
+  };
+}
+
+/** Guarantee warMode is always a full object */
+export function ensureWarMode(
+  wm: Partial<WarModeState> | null | undefined,
+): WarModeState {
+  return { ...createInitialWarMode(), ...(wm ?? {}) };
+}
 
 export function randomFaction(): Faction {
   return Math.random() < 0.5 ? "dog" : "cat";
@@ -42,7 +67,7 @@ export function canAttackIndex(
   const targetIsDogSide = isCorrectSide(targetIdx, "dog");
 
   if (attackerFaction === "dog") return !targetIsDogSide; // dog → only cat side
-  if (attackerFaction === "cat") return targetIsDogSide;  // cat → only dog side
+  if (attackerFaction === "cat") return targetIsDogSide; // cat → only dog side
 
   return false;
 }
@@ -214,7 +239,13 @@ export function sanitizeBoard(board: unknown): (Cell | null)[] {
   for (let i = 0; i < size; i++) {
     const raw = board[i];
     if (!raw || typeof raw !== "object") continue;
-    const c = raw as Partial<Cell>;
+    const c = raw as Partial<Cell> & {
+      nationId?: any;
+      nationEmoji?: any;
+      targetId?: any;
+      targetType?: any;
+      targetLabel?: any;
+    };
 
     if (typeof c.id !== "number" || !Number.isFinite(c.id) || c.id <= 0) continue;
     const id = Math.floor(c.id);
@@ -251,8 +282,6 @@ export function sanitizeBoard(board: unknown): (Cell | null)[] {
     if (c.targetId) cell.targetId = c.targetId;
     if (c.targetType) cell.targetType = c.targetType;
     if (c.targetLabel) cell.targetLabel = c.targetLabel;
-    if (c.nationId) cell.nationId = c.nationId;
-    if (c.nationEmoji) cell.nationEmoji = c.nationEmoji;
     if (typeof c.deployedUntil === "number") cell.deployedUntil = c.deployedUntil;
 
     out[i] = cell;
@@ -428,7 +457,7 @@ export function bumpDailyQuest(
   amount = 1,
   _tier?: number,
 ): GameState {
-  const quests = s.dailyQuests.map((q) => {
+  const quests = (s.dailyQuests ?? []).map((q) => {
     if (q.claimed) return q;
     if (type === "merge" && q.id.startsWith("dq_merge")) {
       return { ...q, progress: Math.min(q.target, q.progress + amount) };
@@ -484,7 +513,8 @@ export function initialState(): GameState {
     achievements: [],
     dogSideConquered: false,
     catSideConquered: false,
-    warMode: undefined,
+    // CRITICAL FIX: never undefined
+    warMode: createInitialWarMode(),
   };
 }
 
@@ -500,6 +530,9 @@ export function load(): GameState {
     const base = initialState();
     const merged = { ...base, ...parsed } as GameState;
     merged.board = sanitizeBoard(merged.board);
+
+    // CRITICAL: always guarantee a full warMode object
+    merged.warMode = ensureWarMode(merged.warMode);
 
     // Never restore transient modal state
     merged.pendingHybrid = null;
@@ -518,6 +551,8 @@ export function save(s: GameState): void {
       ...s,
       pendingHybrid: null,
       explosion: null,
+      // keep warMode but never let it be undefined when reloaded
+      warMode: ensureWarMode(s.warMode),
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
   } catch {

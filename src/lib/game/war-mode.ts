@@ -2,6 +2,9 @@
 /**
  * Pure War Mode logic + Live Targets integration.
  * Strict adversary-only attack rules enforced.
+ *
+ * createInitialWarMode is defined here AND re-exported from helpers
+ * so both files stay in sync and warMode is never undefined.
  */
 
 import type { GameState, WarModeState } from "./types";
@@ -21,7 +24,12 @@ import {
   HYBRID_COMMANDER_ABILITIES,
   type HybridCommanderAbilityId,
 } from "@/lib/constants/war-mode";
-import { updateConquerFlags, isCorrectSide, canAttackIndex } from "./helpers";
+import {
+  updateConquerFlags,
+  isCorrectSide,
+  canAttackIndex,
+  createInitialWarMode,
+} from "./helpers";
 import {
   maybeSpawnTarget,
   cleanExpiredTargets,
@@ -29,22 +37,8 @@ import {
   stripAllTargetCells,
 } from "./war-targets";
 
-export function createInitialWarMode(): WarModeState {
-  return {
-    active: false,
-    startedAt: 0,
-    endsAt: 0,
-    frontLine: 50,
-    controlGenerated: 0,
-    lastPassiveAt: 0,
-    activeAbilities: [],
-    cooldownUntil: 0,
-    targets: [],
-    mergesSinceLastTarget: 0,
-    hasSeenTargetTutorial: false,
-    victory: false,
-  };
-}
+// Re-export so other files can import from either place
+export { createInitialWarMode };
 
 export function canEnterWarMode(s: GameState, now = Date.now()): boolean {
   if (s.warMode?.active) return false;
@@ -87,9 +81,12 @@ export function tickWarMode(s: GameState, now = Date.now()): GameState {
 
   let next = cleanExpiredTargets(s, now);
 
-  let frontLine = next.warMode!.frontLine;
-  let controlGenerated = next.warMode!.controlGenerated;
-  let lastPassiveAt = next.warMode!.lastPassiveAt ?? now;
+  // After cleanExpiredTargets, warMode is still guaranteed by our helpers
+  const wm = next.warMode ?? createInitialWarMode();
+
+  let frontLine = wm.frontLine;
+  let controlGenerated = wm.controlGenerated;
+  let lastPassiveAt = wm.lastPassiveAt ?? now;
 
   const elapsed = now - lastPassiveAt;
   if (elapsed >= 10_000) {
@@ -110,14 +107,14 @@ export function tickWarMode(s: GameState, now = Date.now()): GameState {
     lastPassiveAt = now - (elapsed % 10_000);
   }
 
-  const activeAbilities = (next.warMode!.activeAbilities || []).filter(
+  const activeAbilities = (wm.activeAbilities || []).filter(
     (a) => a.endsAt > now,
   );
 
   return {
     ...next,
     warMode: {
-      ...next.warMode!,
+      ...wm,
       frontLine,
       controlGenerated,
       lastPassiveAt,
@@ -181,12 +178,13 @@ export function deployUnit(
   // ── Live Target attack ─────────────────────────────────────
   if (cell.isTarget) {
     // Infer attacker: prefer hybrid if present, otherwise opposite of the side
-    const attackerFaction: "dog" | "cat" | "hybrid" =
-      s.board.some((c) => c?.faction === "hybrid")
-        ? "hybrid"
-        : isCorrectSide(index, "dog")
-          ? "cat"
-          : "dog";
+    const attackerFaction: "dog" | "cat" | "hybrid" = s.board.some(
+      (c) => c?.faction === "hybrid",
+    )
+      ? "hybrid"
+      : isCorrectSide(index, "dog")
+        ? "cat"
+        : "dog";
 
     const result = attackTarget(s, index, attackerFaction, now);
     return {
