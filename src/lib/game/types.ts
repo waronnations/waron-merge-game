@@ -79,8 +79,19 @@ export interface WarModeState {
   }[];
   /** Personal cooldown until next War Mode */
   cooldownUntil: number;
-  /** Whether this session was won (front line held at extreme) */
+  /** Extreme win (front ≤5 or ≥95) */
   victory?: boolean;
+  /** Any session just finished — drives the end modal */
+  sessionComplete?: boolean;
+  /** Energy spent this session (entry + deploys + merges) */
+  energySpent?: number;
+  /** Snapshot of rewards granted on end (for the modal) */
+  lastRewards?: {
+    glory: number;
+    wardog: number;
+    warcat: number;
+    energyRefund: number;
+  };
 
   // Live Targets
   targets: WarTarget[];

@@ -65,13 +65,32 @@ export const HYBRID_COMMANDER_ABILITIES = {
 
 export type HybridCommanderAbilityId = keyof typeof HYBRID_COMMANDER_ABILITIES;
 
-/** Rewards for winning a War Mode session */
+/**
+ * Rewards for a War Mode session — designed so net EV is positive.
+ * Player always gets energy back (≥ spent × 1.25, min 18) + participation rewards.
+ */
 export const WAR_MODE_REWARDS = {
-  victoryGlory: 2200,
-  victoryWardog: 2.8,
-  victoryWarcat: 2.8,
-  perfectPushBonusGlory: 900,
-  contributionMult: 1.0,
+  /** Always granted when a session ends */
+  participationGlory: 600,
+  participationWardog: 0.8,
+  participationWarcat: 0.8,
+
+  /** Extreme front-line win */
+  victoryGlory: 1800,
+  victoryWardog: 2.2,
+  victoryWarcat: 2.2,
+
+  /** Near-max push + high control */
+  perfectPushBonusGlory: 700,
+
+  /** Glory per point of controlGenerated */
+  controlGloryMult: 15,
+
+  /** Energy refund multiplier (1.25 = spend 20 → get 25 back) */
+  energyRefundMult: 1.25,
+
+  /** Minimum energy returned even on a short session */
+  energyRefundMin: 18,
 };
 
 /** Visual & feel */

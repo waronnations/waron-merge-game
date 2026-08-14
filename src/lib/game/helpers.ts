@@ -29,6 +29,9 @@ export function createInitialWarMode(): WarModeState {
     mergesSinceLastTarget: 0,
     hasSeenTargetTutorial: false,
     victory: false,
+    sessionComplete: false,
+    energySpent: 0,
+    lastRewards: undefined,
   };
 }
 
@@ -513,7 +516,7 @@ export function initialState(): GameState {
     achievements: [],
     dogSideConquered: false,
     catSideConquered: false,
-    // CRITICAL FIX: never undefined
+    // CRITICAL: never undefined
     warMode: createInitialWarMode(),
   };
 }
@@ -538,6 +541,15 @@ export function load(): GameState {
     merged.pendingHybrid = null;
     merged.explosion = null;
 
+    // Don't restore a stale sessionComplete modal after reload
+    if (merged.warMode) {
+      merged.warMode = {
+        ...merged.warMode,
+        sessionComplete: false,
+        lastRewards: undefined,
+      };
+    }
+
     return applyOfflineEnergyRegen(merged);
   } catch {
     return initialState();
@@ -551,7 +563,6 @@ export function save(s: GameState): void {
       ...s,
       pendingHybrid: null,
       explosion: null,
-      // keep warMode but never let it be undefined when reloaded
       warMode: ensureWarMode(s.warMode),
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));

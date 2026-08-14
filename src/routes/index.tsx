@@ -63,7 +63,7 @@ function WaronMergePage() {
     null,
   );
 
-  // War Mode victory modal control
+  // War Mode end modal
   const [showWarVictory, setShowWarVictory] = useState(false);
 
   const session = useTelegramSession();
@@ -99,7 +99,6 @@ function WaronMergePage() {
 
   const lastRateToastRef = useRef(0);
 
-  // Rare soft rate toast only — never spam fast players
   const softRateLimitToast = useCallback(() => {
     const now = Date.now();
     if (now - lastRateToastRef.current < 4000) return;
@@ -123,18 +122,21 @@ function WaronMergePage() {
     }
   }, [game.hydrated, game.canClaimDaily, game.state.hasSeenTutorial]);
 
-  // Show victory modal when War Mode ends with victory
-  // FULLY SAFE optional chaining — never crash if warMode is missing
+  // Show modal for ANY finished War Mode session
   useEffect(() => {
     if (
-      game.state.warMode?.victory === true &&
-      game.state.warMode?.active === false
+      game.state.warMode?.sessionComplete === true ||
+      (game.state.warMode?.victory === true &&
+        game.state.warMode?.active === false)
     ) {
       setShowWarVictory(true);
     }
-  }, [game.state.warMode?.victory, game.state.warMode?.active]);
+  }, [
+    game.state.warMode?.sessionComplete,
+    game.state.warMode?.victory,
+    game.state.warMode?.active,
+  ]);
 
-  // Resume → push local board (never pull stale board over active play)
   useEffect(() => {
     if (!authenticated) return;
     const onVis = () => {
@@ -166,13 +168,11 @@ function WaronMergePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, baseSub, authenticated]);
 
-  // Silent on most sync noise; only rate-limit gets a soft ping
   useEffect(() => {
     if (!lastError) return;
     if (lastError === "rate_limited") softRateLimitToast();
   }, [lastError, softRateLimitToast]);
 
-  // Energy recover: each token is checked separately (never TON)
   const canRecoverWardog =
     game.state.energy < MAX_ENERGY &&
     game.state.wardogTokens >= RECOVER_ENERGY_TOKEN_COST;
@@ -180,7 +180,6 @@ function WaronMergePage() {
     game.state.energy < MAX_ENERGY &&
     game.state.warcatTokens >= RECOVER_ENERGY_TOKEN_COST;
 
-  // Kept for tab-bar badge only (claims UI removed from OPS)
   const missionsBadge =
     (game.state.dailyQuests?.filter((q) => q.progress >= q.target && !q.claimed)
       .length ?? 0) +
@@ -217,10 +216,9 @@ function WaronMergePage() {
     setShowDaily,
   });
 
-  // silence unused if claims stay only outside OPS
   void handleClaimTask;
   void handleClaimDailyQuest;
-  void showWarVictory; // used by modal visibility logic via effect
+  void showWarVictory;
 
   if (!game.hydrated) {
     return (
@@ -265,7 +263,6 @@ function WaronMergePage() {
                 canRecoverWardog={canRecoverWardog}
                 canRecoverWarcat={canRecoverWarcat}
                 onSacrificeHybrid={handleSacrificeHybrid}
-                // War Mode
                 onEnterWarMode={() => game.tryEnterWarMode()}
                 onDeployUnit={(idx) => game.tryDeployUnit(idx)}
                 onActivateAbility={(id) => game.tryActivateAbility(id)}
@@ -368,10 +365,12 @@ function WaronMergePage() {
         handleHybridWithArt={handleHybridWithArt}
       />
 
-      {/* War Mode Victory Modal — warMode can be undefined safely */}
       <WarModeVictoryModal
         warMode={game.state.warMode}
-        onClose={() => setShowWarVictory(false)}
+        onClose={() => {
+          setShowWarVictory(false);
+          game.clearWarModeVictory?.();
+        }}
       />
     </div>
   );

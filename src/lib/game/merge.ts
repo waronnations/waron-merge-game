@@ -38,7 +38,6 @@ export interface HybridClashOutcome {
  *
  * Rules:
  * - Must be on the adversary half only
- *   (dog → cat side, cat → dog side, hybrid → either)
  * - Nation (country) → T5 or Hybrid only
  * - Telegram player → under T5 only (tier 1–4)
  */
@@ -54,17 +53,14 @@ export function computeTargetAttack(
   if (attacker.faction === "target") return null;
   if (!s.warMode?.active) return null;
 
-  // Adversary-side only
   if (!canAttackIndex(attacker.faction, to)) return null;
 
   const isNation = target.targetType === "nation";
   const isPlayer = target.targetType === "player";
 
   if (isNation) {
-    // Country → T5 or Hybrid only
     if (attacker.tier < MAX_TIER && attacker.faction !== "hybrid") return null;
   } else if (isPlayer) {
-    // Telegram user → under T5 only (hybrids allowed)
     if (attacker.faction !== "hybrid" && attacker.tier >= MAX_TIER) return null;
   } else {
     return null;
@@ -81,7 +77,6 @@ export function computeTargetAttack(
   );
   if (!attackResult.ok) return null;
 
-  // Consume the attacker unit
   const board = [...attackResult.nextState.board];
   board[from] = null;
 
@@ -96,6 +91,17 @@ export function computeTargetAttack(
     lastMergeAt: Date.now(),
     lastSeenAt: Date.now(),
   };
+
+  // Track energy spent on target strikes during war
+  if (nextState.warMode?.active) {
+    nextState = {
+      ...nextState,
+      warMode: {
+        ...nextState.warMode,
+        energySpent: (nextState.warMode.energySpent ?? 0) + energyCost,
+      },
+    };
+  }
 
   nextState = bumpDailyQuest(nextState, "merge", 1);
   nextState = updateTaskProgress(nextState);
@@ -170,7 +176,7 @@ export function computeHybridClash(
   nextState = applyAchievementRewards(nextState, unlocked);
   nextState = updateConquerFlags(nextState);
   nextState = tickWarMode(nextState);
-  nextState = applyMergeControl(nextState, 6, false, true);
+  nextState = applyMergeControl(nextState, 6, false, true, "hybrid");
 
   return {
     nextState,
@@ -200,7 +206,6 @@ export function computeNormalMerge(
   const b = s.board[to];
   if (!a || !b) return null;
 
-  // Skip targets (handled by computeTargetAttack)
   if (a.faction === "target" || b.faction === "target") return null;
 
   if (a.tier >= MAX_TIER || b.tier >= MAX_TIER) return null;
@@ -260,7 +265,13 @@ export function computeNormalMerge(
   next = applyAchievementRewards(next, unlocked);
   next = updateConquerFlags(next);
   next = tickWarMode(next);
-  next = applyMergeControl(next, newTier, true, false);
+  next = applyMergeControl(
+    next,
+    newTier,
+    true,
+    false,
+    a.faction as "dog" | "cat",
+  );
   next = afterMergeWarMode(next);
 
   return {
@@ -280,8 +291,6 @@ export function computeNormalMerge(
 
 /**
  * Hybrid ↔ Hybrid merge (any hybrids of the same tier)
- * - Unlimited progression
- * - AI art is kept ONLY if BOTH parents are AI-generated
  */
 export function computeHybridMerge(
   s: GameState,
@@ -345,7 +354,7 @@ export function computeHybridMerge(
   next = applyAchievementRewards(next, unlocked);
   next = updateConquerFlags(next);
   next = tickWarMode(next);
-  next = applyMergeControl(next, newTier, false, true);
+  next = applyMergeControl(next, newTier, false, true, "hybrid");
   next = afterMergeWarMode(next);
 
   return {

@@ -8,20 +8,36 @@ interface Props {
 }
 
 export function WarModeVictoryModal({ warMode, onClose }: Props) {
-  // Fully defensive – never crash if warMode is missing
-  const show = !!(warMode?.victory === true && warMode?.active === false);
+  // Show for ANY finished session (not only extreme victory)
+  const show = !!(
+    warMode &&
+    warMode.active === false &&
+    (warMode.sessionComplete === true || warMode.victory === true)
+  );
 
   useEffect(() => {
     if (!show) return;
-    const t = setTimeout(onClose, 6500);
+    const t = setTimeout(onClose, 9000);
     return () => clearTimeout(t);
   }, [show, onClose]);
 
   if (!show || !warMode) return null;
 
-  const isDogWin = (warMode.frontLine ?? 50) <= 5;
-  const title = isDogWin ? "WARDOG VICTORY" : "WARCAT VICTORY";
-  const color = isDogWin ? "#f97316" : "#a855f7";
+  const isVictory = warMode.victory === true;
+  const front = warMode.frontLine ?? 50;
+  const isDogLead = front <= 50;
+  const rewards = warMode.lastRewards;
+
+  const title = isVictory
+    ? isDogLead
+      ? "WARDOG VICTORY"
+      : "WARCAT VICTORY"
+    : "WAR MODE COMPLETE";
+  const color = isVictory
+    ? isDogLead
+      ? "#f97316"
+      : "#a855f7"
+    : "#fbbf24";
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm">
@@ -30,20 +46,50 @@ export function WarModeVictoryModal({ warMode, onClose }: Props) {
           className="mb-2 text-xs font-black tracking-[0.3em] uppercase"
           style={{ color }}
         >
-          WAR MODE COMPLETE
+          {isVictory ? "SECTOR SECURED" : "SESSION ENDED"}
         </div>
         <div className="mb-4 text-2xl font-black text-white">{title}</div>
 
-        <div className="mb-5 space-y-1 text-sm text-zinc-400">
-          <div>Front Line: {Math.round(warMode.frontLine ?? 50)}</div>
+        <div className="mb-4 space-y-1 text-sm text-zinc-400">
+          <div>Front Line: {Math.round(front)}</div>
           <div>
             Control Generated: {Math.floor(warMode.controlGenerated ?? 0)}
           </div>
         </div>
 
-        <div className="mb-6 rounded-xl bg-white/5 py-3 text-sm font-bold text-white">
-          Rewards claimed
-        </div>
+        {rewards ? (
+          <div className="mb-6 space-y-2 rounded-xl bg-white/5 px-4 py-3 text-left text-sm">
+            <div className="text-center text-xs font-bold uppercase tracking-wider text-zinc-500">
+              Rewards
+            </div>
+            <div className="flex justify-between text-white">
+              <span>Glory</span>
+              <span className="font-bold text-amber-400">+{rewards.glory}</span>
+            </div>
+            <div className="flex justify-between text-white">
+              <span>$WARDOG</span>
+              <span className="font-bold text-orange-400">
+                +{Number(rewards.wardog).toFixed(1)}
+              </span>
+            </div>
+            <div className="flex justify-between text-white">
+              <span>$WARCAT</span>
+              <span className="font-bold text-purple-400">
+                +{Number(rewards.warcat).toFixed(1)}
+              </span>
+            </div>
+            <div className="flex justify-between border-t border-white/10 pt-2 text-white">
+              <span>Energy refund</span>
+              <span className="font-bold text-emerald-400">
+                +{rewards.energyRefund}
+              </span>
+            </div>
+          </div>
+        ) : (
+          <div className="mb-6 rounded-xl bg-white/5 py-3 text-sm font-bold text-white">
+            Rewards claimed
+          </div>
+        )}
 
         <button
           onClick={onClose}

@@ -2,9 +2,10 @@
 /**
  * Pure War Mode logic + Live Targets integration.
  * Strict adversary-only attack rules enforced.
+ * Positive EV economy: energy refund + participation rewards on every session end.
  */
 
-import type { GameState, WarModeState } from "./types";
+import type { GameState } from "./types";
 import {
   WAR_MODE_DURATION_MS,
   WAR_MODE_ENERGY_COST_TO_ENTER,
@@ -21,6 +22,7 @@ import {
   HYBRID_COMMANDER_ABILITIES,
   type HybridCommanderAbilityId,
 } from "@/lib/constants/war-mode";
+import { MAX_ENERGY, ENERGY_PER_MERGE } from "@/lib/constants";
 import {
   updateConquerFlags,
   isCorrectSide,
@@ -62,6 +64,9 @@ export function enterWarMode(s: GameState, now = Date.now()): GameState | null {
       mergesSinceLastTarget: 0,
       hasSeenTargetTutorial: s.warMode?.hasSeenTargetTutorial ?? false,
       victory: false,
+      sessionComplete: false,
+      energySpent: WAR_MODE_ENERGY_COST_TO_ENTER,
+      lastRewards: undefined,
     },
   };
 }
@@ -117,11 +122,17 @@ export function tickWarMode(s: GameState, now = Date.now()): GameState {
   };
 }
 
+/**
+ * Merges push BOTH controlGenerated AND the front line.
+ * dog → lower frontLine, cat → higher, hybrid → either.
+ * Also tracks ENERGY_PER_MERGE toward energySpent.
+ */
 export function applyMergeControl(
   s: GameState,
   tier: number,
   isPerfectVariant: boolean,
   isHybrid: boolean,
+  mergeFaction?: "dog" | "cat" | "hybrid",
 ): GameState {
   if (!s.warMode?.active) return s;
 
@@ -129,11 +140,27 @@ export function applyMergeControl(
   if (isPerfectVariant) gain += PERFECT_VARIANT_CONTROL_BONUS;
   if (isHybrid) gain += HYBRID_CONTROL_BONUS;
 
+  let frontLine = s.warMode.frontLine;
+  const push = gain * 0.35;
+
+  if (mergeFaction === "dog") {
+    frontLine = Math.max(0, frontLine - push);
+  } else if (mergeFaction === "cat") {
+    frontLine = Math.min(FRONT_LINE_MAX, frontLine + push);
+  } else if (isHybrid || mergeFaction === "hybrid") {
+    frontLine =
+      Math.random() < 0.5
+        ? Math.max(0, frontLine - push)
+        : Math.min(FRONT_LINE_MAX, frontLine + push);
+  }
+
   return {
     ...s,
     warMode: {
       ...s.warMode,
       controlGenerated: s.warMode.controlGenerated + gain,
+      frontLine,
+      energySpent: (s.warMode.energySpent ?? 0) + ENERGY_PER_MERGE,
     },
   };
 }
@@ -177,17 +204,6 @@ export function deployUnit(
       : isCorrectSide(index, "dog")
         ? "cat"
         : "dog";
-
-    // Extra tier rules for deploy-path strikes
-    const isNation = cell.targetType === "nation";
-    const isPlayer = cell.targetType === "player";
-    if (isNation) {
-      // deploy path doesn't consume a unit — still enforce T5 concept via hybrid prefer
-      // (merge-path is the primary "nuke with unit" flow)
-    }
-    if (isPlayer && attackerFaction !== "hybrid") {
-      // under-T5 preference is enforced on merge path; deploy uses inferred faction
-    }
 
     if (!canAttackIndex(attackerFaction, index)) {
       return {
@@ -252,6 +268,7 @@ export function deployUnit(
       ...s.warMode,
       frontLine,
       controlGenerated: s.warMode.controlGenerated + gain,
+      energySpent: (s.warMode.energySpent ?? 0) + DEPLOY_ENERGY_COST,
     },
   };
 
@@ -299,13 +316,19 @@ export function endWarMode(s: GameState, now = Date.now()): GameState {
   if (!s.warMode?.active) return s;
 
   const front = s.warMode.frontLine;
-  const isVictory = front <= 5 || front >= 95;
-  const isPerfect =
-    (front <= 2 || front >= 98) && s.warMode.controlGenerated > 80;
+  const control = s.warMode.controlGenerated ?? 0;
+  const energySpent =
+    s.warMode.energySpent ?? WAR_MODE_ENERGY_COST_TO_ENTER;
 
-  let glory = 0;
-  let wardog = 0;
-  let warcat = 0;
+  const isVictory = front <= 5 || front >= 95;
+  const isPerfect = (front <= 2 || front >= 98) && control > 80;
+
+  // ── Always-positive economy ────────────────────────────────
+  let glory = WAR_MODE_REWARDS.participationGlory;
+  let wardog = WAR_MODE_REWARDS.participationWardog;
+  let warcat = WAR_MODE_REWARDS.participationWarcat;
+
+  glory += Math.floor(control * WAR_MODE_REWARDS.controlGloryMult);
 
   if (isVictory) {
     glory += WAR_MODE_REWARDS.victoryGlory;
@@ -316,9 +339,19 @@ export function endWarMode(s: GameState, now = Date.now()): GameState {
     glory += WAR_MODE_REWARDS.perfectPushBonusGlory;
   }
 
-  glory += Math.floor(s.warMode.controlGenerated * 12);
+  const energyRefund = Math.max(
+    WAR_MODE_REWARDS.energyRefundMin,
+    Math.ceil(energySpent * WAR_MODE_REWARDS.energyRefundMult),
+  );
 
   const board = stripAllTargetCells(s.board);
+
+  const lastRewards = {
+    glory,
+    wardog,
+    warcat,
+    energyRefund,
+  };
 
   return {
     ...s,
@@ -326,22 +359,30 @@ export function endWarMode(s: GameState, now = Date.now()): GameState {
     glory: s.glory + glory,
     wardogTokens: s.wardogTokens + wardog,
     warcatTokens: s.warcatTokens + warcat,
+    energy: Math.min(MAX_ENERGY, (s.energy ?? 0) + energyRefund),
     warMode: {
       ...createInitialWarMode(),
       cooldownUntil: now + WAR_MODE_COOLDOWN_MS,
       victory: isVictory,
+      sessionComplete: true,
       hasSeenTargetTutorial: s.warMode.hasSeenTargetTutorial,
+      frontLine: front,
+      controlGenerated: control,
+      lastRewards,
+      energySpent,
     },
   };
 }
 
 export function clearWarModeVictory(s: GameState): GameState {
-  if (!s.warMode || !s.warMode.victory) return s;
+  if (!s.warMode) return s;
   return {
     ...s,
     warMode: {
       ...s.warMode,
       victory: false,
+      sessionComplete: false,
+      lastRewards: undefined,
     },
   };
 }
