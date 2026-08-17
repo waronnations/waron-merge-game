@@ -16,6 +16,9 @@
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",
+    "@react-three/drei": "^10.7.8",
+    "@react-three/fiber": "^9.7.0",
+    "@react-three/rapier": "^2.2.0",
     "@tailwindcss/vite": "^4.2.1",
     "@tanstack/react-query": "^5.101.1",
     "@tanstack/react-router": "^1.170.16",
@@ -25,6 +28,7 @@
     "@ton/crypto": "^3.3.0",
     "@ton/ton": "^16.3.0",
     "@tonconnect/ui-react": "^3.0.0",
+    "@types/three": "^0.185.4",
     "buffer": "^6.0.3",
     "clsx": "^2.1.1",
     "framer-motion": "^12.42.2",
@@ -34,6 +38,7 @@
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.5.0",
     "tailwindcss": "^4.2.1",
+    "three": "^0.185.1",
     "tw-animate-css": "^1.3.4",
     "zod": "^3.24.2"
   },

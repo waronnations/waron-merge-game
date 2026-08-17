@@ -1,9 +1,9 @@
 // src/components/game/PrimaryTabBar.tsx
-import { Swords, ListChecks, Shield, Globe2, Coins } from "lucide-react";
+import { Swords, ListChecks, Shield, Globe2, Coins, Crosshair } from "lucide-react";
 import { haptic } from "@/lib/telegram";
 import { cn } from "@/lib/utils";
 
-export type PrimaryTab = "play" | "ops" | "world" | "earn" | "base";
+export type PrimaryTab = "play" | "ops" | "world" | "earn" | "base" | "battlefield";
 
 export const PRIMARY_TABS: {
   id: PrimaryTab;
@@ -12,6 +12,7 @@ export const PRIMARY_TABS: {
 }[] = [
   { id: "play", label: "Play", icon: Swords },
   { id: "ops", label: "Ops", icon: ListChecks },
+  { id: "battlefield", label: "Battle", icon: Crosshair },
   { id: "world", label: "World", icon: Globe2 },
   { id: "earn", label: "Earn", icon: Coins },
   { id: "base", label: "Base", icon: Shield },

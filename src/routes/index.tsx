@@ -21,6 +21,7 @@ import { WorldTab, type WorldSub } from "@/components/game/tabs/WorldTab";
 import { EarnTab, type EarnSub } from "@/components/game/tabs/EarnTab";
 import { BaseTab, type BaseSub } from "@/components/game/tabs/BaseTab";
 import { WarModeVictoryModal } from "@/components/war/WarModeVictoryModal";
+import { BattlefieldTab } from "@/components/battlefield/BattlefieldTab";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -59,9 +60,7 @@ function WaronMergePage() {
 
   const [showCocoonModal, setShowCocoonModal] = useState(false);
   const [showResultModal, setShowResultModal] = useState(false);
-  const [generatedImageUrl, setGeneratedImageUrl] = useState<string | null>(
-    null,
-  );
+  const [generatedImageUrl, setGeneratedImageUrl] = useState<string | null>(null);
 
   // War Mode end modal
   const [showWarVictory, setShowWarVictory] = useState(false);
@@ -126,8 +125,7 @@ function WaronMergePage() {
   useEffect(() => {
     if (
       game.state.warMode?.sessionComplete === true ||
-      (game.state.warMode?.victory === true &&
-        game.state.warMode?.active === false)
+      (game.state.warMode?.victory === true && game.state.warMode?.active === false)
     ) {
       setShowWarVictory(true);
     }
@@ -244,7 +242,7 @@ function WaronMergePage() {
         </div>
       )}
 
-      <main className="app-main flex-1 overflow-y-auto px-3 pt-2">
+      <main className="app-main flex-1 overflow-y-auto px-3 pt-2 pb-20">
         <AnimatePresence mode="wait">
           {tab === "play" && (
             <motion.div
@@ -281,6 +279,17 @@ function WaronMergePage() {
               className="space-y-4"
             >
               <OpsTab state={game.state} />
+            </motion.div>
+          )}
+
+          {tab === "battlefield" && (
+            <motion.div
+              key="battlefield"
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -6 }}
+            >
+              <BattlefieldTab state={game.state} />
             </motion.div>
           )}
 
