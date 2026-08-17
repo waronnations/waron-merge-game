@@ -1,7 +1,7 @@
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { PointerLockControls, Sky, Text, Html } from "@react-three/drei";
+import { Sky, Text, Html } from "@react-three/drei";
 import { Physics, RigidBody } from "@react-three/rapier";
-import { useRef, useState, useEffect, useMemo, useCallback } from "react";
+import { useRef, useState, useEffect, useCallback, useMemo } from "react";
 import * as THREE from "three";
 import {
   ARENA_SIZE,
@@ -13,6 +13,8 @@ import {
   DAMAGE,
   ENEMY_COUNT,
   ENEMY_HEALTH,
+  ENEMY_SPEED,
+  LOOK_SENSITIVITY,
 } from "./constants";
 import type { Faction, PlayerStats, Enemy } from "./types";
 
@@ -20,29 +22,30 @@ interface Props {
   playerFaction: Faction;
   onMatchEnd: (stats: PlayerStats) => void;
   rankBonus?: number;
+  onExit: () => void;
 }
 
 function Ground() {
   return (
     <RigidBody type="fixed" colliders="cuboid">
-      <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow position={[0, 0, 0]}>
-        <planeGeometry args={[ARENA_SIZE * 2.2, ARENA_SIZE * 2.2]} />
-        <meshStandardMaterial color="#111111" roughness={0.9} />
+      <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+        <planeGeometry args={[ARENA_SIZE * 2.4, ARENA_SIZE * 2.4]} />
+        <meshStandardMaterial color="#0f0f0f" roughness={0.95} />
       </mesh>
     </RigidBody>
   );
 }
 
 function Walls() {
-  const h = 5.5;
+  const h = 6;
   const s = ARENA_SIZE;
-  const mat = <meshStandardMaterial color="#1f1f1f" roughness={0.85} />;
+  const mat = <meshStandardMaterial color="#1a1a1a" roughness={0.8} />;
   return (
     <group>
-      <RigidBody type="fixed"><mesh position={[0, h / 2, -s]}><boxGeometry args={[s * 2.2, h, 1.2]} />{mat}</mesh></RigidBody>
-      <RigidBody type="fixed"><mesh position={[0, h / 2, s]}><boxGeometry args={[s * 2.2, h, 1.2]} />{mat}</mesh></RigidBody>
-      <RigidBody type="fixed"><mesh position={[-s, h / 2, 0]}><boxGeometry args={[1.2, h, s * 2.2]} />{mat}</mesh></RigidBody>
-      <RigidBody type="fixed"><mesh position={[s, h / 2, 0]}><boxGeometry args={[1.2, h, s * 2.2]} />{mat}</mesh></RigidBody>
+      <RigidBody type="fixed"><mesh position={[0, h / 2, -s]}><boxGeometry args={[s * 2.4, h, 1.4]} />{mat}</mesh></RigidBody>
+      <RigidBody type="fixed"><mesh position={[0, h / 2, s]}><boxGeometry args={[s * 2.4, h, 1.4]} />{mat}</mesh></RigidBody>
+      <RigidBody type="fixed"><mesh position={[-s, h / 2, 0]}><boxGeometry args={[1.4, h, s * 2.4]} />{mat}</mesh></RigidBody>
+      <RigidBody type="fixed"><mesh position={[s, h / 2, 0]}><boxGeometry args={[1.4, h, s * 2.4]} />{mat}</mesh></RigidBody>
     </group>
   );
 }
@@ -50,14 +53,14 @@ function Walls() {
 function Cover() {
   const boxes = useMemo(() => {
     const arr: { pos: [number, number, number]; size: [number, number, number] }[] = [];
-    for (let i = 0; i < 14; i++) {
+    for (let i = 0; i < 16; i++) {
       arr.push({
         pos: [
-          (Math.random() - 0.5) * ARENA_SIZE * 1.5,
-          1.1 + Math.random() * 0.4,
-          (Math.random() - 0.5) * ARENA_SIZE * 1.5,
+          (Math.random() - 0.5) * ARENA_SIZE * 1.6,
+          1.15,
+          (Math.random() - 0.5) * ARENA_SIZE * 1.6,
         ],
-        size: [1.8 + Math.random() * 2.2, 2.2 + Math.random(), 1.8 + Math.random() * 2.2],
+        size: [1.6 + Math.random() * 2.4, 2.4 + Math.random() * 1.2, 1.6 + Math.random() * 2.4],
       });
     }
     return arr;
@@ -68,7 +71,7 @@ function Cover() {
         <RigidBody key={i} type="fixed" colliders="cuboid">
           <mesh position={b.pos} castShadow>
             <boxGeometry args={b.size} />
-            <meshStandardMaterial color="#2a2a2a" roughness={0.7} />
+            <meshStandardMaterial color="#222" roughness={0.7} />
           </mesh>
         </RigidBody>
       ))}
@@ -78,42 +81,69 @@ function Cover() {
 
 function GunModel() {
   return (
-    <group position={[0.28, -0.22, -0.45]} rotation={[0.08, 0.12, 0]}>
+    <group position={[0.32, -0.28, -0.52]} rotation={[0.12, 0.15, 0]}>
       <mesh>
-        <boxGeometry args={[0.07, 0.11, 0.38]} />
-        <meshStandardMaterial color="#1a1a1a" metalness={0.85} roughness={0.25} />
+        <boxGeometry args={[0.075, 0.12, 0.42]} />
+        <meshStandardMaterial color="#111" metalness={0.9} roughness={0.2} />
       </mesh>
-      <mesh position={[0, 0.015, -0.22]}>
-        <boxGeometry args={[0.035, 0.035, 0.18]} />
-        <meshStandardMaterial color="#0a0a0a" />
-      </mesh>
-      <mesh position={[0, -0.06, 0.05]}>
-        <boxGeometry args={[0.04, 0.08, 0.12]} />
-        <meshStandardMaterial color="#111" />
+      <mesh position={[0, 0.02, -0.24]}>
+        <boxGeometry args={[0.04, 0.04, 0.22]} />
+        <meshStandardMaterial color="#050505" />
       </mesh>
     </group>
   );
 }
 
-function PlayerController({
+function EnemyBot({ enemy }: { enemy: Enemy }) {
+  const color = enemy.faction === "wardog" ? "#ef4444" : "#3b82f6";
+  if (!enemy.alive) return null;
+
+  return (
+    <group position={enemy.position}>
+      <mesh castShadow userData={{ enemyId: enemy.id }}>
+        <capsuleGeometry args={[0.4, 1.25]} />
+        <meshStandardMaterial color={color} />
+      </mesh>
+      <Text
+        position={[0, 1.85, 0]}
+        fontSize={0.32}
+        color="white"
+        anchorX="center"
+        outlineWidth={0.025}
+        outlineColor="#000"
+      >
+        {enemy.faction.toUpperCase()}
+      </Text>
+      <Html position={[0, 2.25, 0]} center distanceFactor={8}>
+        <div className="w-20 h-1.5 bg-zinc-900/90 rounded-full overflow-hidden border border-zinc-700">
+          <div
+            className="h-full bg-red-500 transition-all duration-150"
+            style={{ width: `${Math.max(0, (enemy.health / enemy.maxHealth) * 100)}%` }}
+          />
+        </div>
+      </Html>
+    </group>
+  );
+}
+
+function GameWorld({
+  playerFaction,
   stats,
   setStats,
-  onShoot,
   enemies,
   setEnemies,
-}: {
-  stats: PlayerStats;
-  setStats: React.Dispatch<React.SetStateAction<PlayerStats>>;
-  onShoot: () => void;
-  enemies: Enemy[];
-  setEnemies: React.Dispatch<React.SetStateAction<Enemy[]>>;
-}) {
-  const { camera, scene, raycaster } = useThree();
-  const controls = useRef<any>(null);
-  const keys = useRef({ w: false, a: false, s: false, d: false });
+  onMatchEnd,
+  moveInput,
+  lookDelta,
+  isLocked,
+  setIsLocked,
+}: any) {
+  const { camera, scene, raycaster, gl } = useThree();
   const lastShot = useRef(0);
-  const velocity = useRef(new THREE.Vector3());
+  const euler = useRef(new THREE.Euler(0, 0, 0, "YXZ"));
+  const keys = useRef({ w: false, a: false, s: false, d: false });
 
+  // Keyboard
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
       if (e.code === "KeyW") keys.current.w = true;
@@ -135,113 +165,175 @@ function PlayerController({
     };
   }, []);
 
-  useFrame((_, delta) => {
-    if (!controls.current?.isLocked) return;
+  // Pointer lock (desktop)
+  useEffect(() => {
+    const onLockChange = () => {
+      setIsLocked(!!document.pointerLockElement);
+    };
+    document.addEventListener("pointerlockchange", onLockChange);
+    return () => document.removeEventListener("pointerlockchange", onLockChange);
+  }, [setIsLocked]);
 
-    const dir = new THREE.Vector3();
-    if (keys.current.w) dir.z -= 1;
-    if (keys.current.s) dir.z += 1;
-    if (keys.current.a) dir.x -= 1;
-    if (keys.current.d) dir.x += 1;
-    dir.normalize();
+  // Mouse look when locked
+  useEffect(() => {
+    const onMouseMove = (e: MouseEvent) => {
+      if (!document.pointerLockElement) return;
+      euler.current.setFromQuaternion(camera.quaternion);
+      euler.current.y -= e.movementX * LOOK_SENSITIVITY;
+      euler.current.x -= e.movementY * LOOK_SENSITIVITY;
+      euler.current.x = Math.max(-Math.PI / 2.2, Math.min(Math.PI / 2.2, euler.current.x));
+      camera.quaternion.setFromEuler(euler.current);
+    };
+    document.addEventListener("mousemove", onMouseMove);
+    return () => document.removeEventListener("mousemove", onMouseMove);
+  }, [camera]);
 
-    const front = new THREE.Vector3();
-    camera.getWorldDirection(front);
-    front.y = 0;
-    front.normalize();
-    const right = new THREE.Vector3().crossVectors(front, new THREE.Vector3(0, 1, 0)).normalize();
+  // Touch / mobile look
+  useEffect(() => {
+    if (lookDelta.current.x === 0 && lookDelta.current.y === 0) return;
+  }, [lookDelta]);
 
-    velocity.current.x = (front.x * -dir.z + right.x * dir.x) * PLAYER_SPEED;
-    velocity.current.z = (front.z * -dir.z + right.z * dir.x) * PLAYER_SPEED;
-
-    camera.position.x += velocity.current.x * delta;
-    camera.position.z += velocity.current.z * delta;
-    camera.position.y = PLAYER_HEIGHT;
-
-    camera.position.x = THREE.MathUtils.clamp(camera.position.x, -ARENA_SIZE + 1.5, ARENA_SIZE - 1.5);
-    camera.position.z = THREE.MathUtils.clamp(camera.position.z, -ARENA_SIZE + 1.5, ARENA_SIZE - 1.5);
-  });
-
-  const doRaycastShoot = useCallback(() => {
+  const shoot = useCallback(() => {
     const now = performance.now() / 1000;
     if (now - lastShot.current < FIRE_RATE) return;
     if (stats.ammo <= 0) return;
 
     lastShot.current = now;
-    setStats((s) => ({ ...s, ammo: s.ammo - 1 }));
-    onShoot();
+    setStats((s: PlayerStats) => ({ ...s, ammo: Math.max(0, s.ammo - 1) }));
 
-    // Real hitscan
+    // Center-screen raycast
     raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
     const hits = raycaster.intersectObjects(scene.children, true);
 
     for (const hit of hits) {
-      const obj = hit.object;
-      // We tag enemies with userData
-      if (obj.userData?.enemyId) {
-        const id = obj.userData.enemyId as string;
-        setEnemies((prev) => {
-          const next = prev.map((e) => {
+      const id = hit.object.userData?.enemyId;
+      if (id) {
+        setEnemies((prev: Enemy[]) => {
+          return prev.map((e) => {
             if (e.id === id && e.alive) {
               const newHp = e.health - DAMAGE;
               if (newHp <= 0) {
-                setStats((s) => ({ ...s, kills: s.kills + 1 }));
+                setStats((s: PlayerStats) => ({ ...s, kills: s.kills + 1 }));
                 return { ...e, health: 0, alive: false };
               }
               return { ...e, health: newHp };
             }
             return e;
           });
-          return next;
         });
         break;
       }
     }
-  }, [camera, scene, raycaster, stats.ammo, setStats, onShoot, setEnemies]);
+  }, [camera, scene, raycaster, stats.ammo, setStats, setEnemies]);
 
+  // Click / fire on desktop
   useEffect(() => {
     const onClick = () => {
-      if (controls.current?.isLocked) doRaycastShoot();
+      if (!document.pointerLockElement) {
+        gl.domElement.requestPointerLock();
+        return;
+      }
+      shoot();
     };
-    window.addEventListener("click", onClick);
-    return () => window.removeEventListener("click", onClick);
-  }, [doRaycastShoot]);
+    gl.domElement.addEventListener("click", onClick);
+    return () => gl.domElement.removeEventListener("click", onClick);
+  }, [gl, shoot]);
+
+  // Main loop
+  useFrame((_, delta) => {
+    // Apply mobile look delta
+    if (lookDelta.current.x !== 0 || lookDelta.current.y !== 0) {
+      euler.current.setFromQuaternion(camera.quaternion);
+      euler.current.y -= lookDelta.current.x * LOOK_SENSITIVITY * 18;
+      euler.current.x -= lookDelta.current.y * LOOK_SENSITIVITY * 18;
+      euler.current.x = Math.max(-Math.PI / 2.2, Math.min(Math.PI / 2.2, euler.current.x));
+      camera.quaternion.setFromEuler(euler.current);
+      lookDelta.current.x = 0;
+      lookDelta.current.y = 0;
+    }
+
+    // Movement
+    const forward = new THREE.Vector3();
+    camera.getWorldDirection(forward);
+    forward.y = 0;
+    forward.normalize();
+    const right = new THREE.Vector3().crossVectors(forward, new THREE.Vector3(0, 1, 0)).normalize();
+
+    let mx = 0;
+    let mz = 0;
+
+    // Keyboard
+    if (keys.current.w) mz -= 1;
+    if (keys.current.s) mz += 1;
+    if (keys.current.a) mx -= 1;
+    if (keys.current.d) mx += 1;
+
+    // Joystick / touch
+    mx += moveInput.current.x;
+    mz += moveInput.current.z;
+
+    if (mx !== 0 || mz !== 0) {
+      const len = Math.hypot(mx, mz) || 1;
+      mx /= len;
+      mz /= len;
+
+      camera.position.x += (forward.x * -mz + right.x * mx) * PLAYER_SPEED * delta;
+      camera.position.z += (forward.z * -mz + right.z * mx) * PLAYER_SPEED * delta;
+    }
+
+    camera.position.y = PLAYER_HEIGHT;
+    camera.position.x = THREE.MathUtils.clamp(camera.position.x, -ARENA_SIZE + 2, ARENA_SIZE - 2);
+    camera.position.z = THREE.MathUtils.clamp(camera.position.z, -ARENA_SIZE + 2, ARENA_SIZE - 2);
+
+    // Simple enemy AI – move toward player
+    setEnemies((prev: Enemy[]) => {
+      return prev.map((e) => {
+        if (!e.alive) return e;
+        const dx = camera.position.x - e.position[0];
+        const dz = camera.position.z - e.position[2];
+        const dist = Math.hypot(dx, dz) || 1;
+        if (dist > 1.8) {
+          const speed = ENEMY_SPEED * delta;
+          return {
+            ...e,
+            position: [
+              e.position[0] + (dx / dist) * speed,
+              e.position[1],
+              e.position[2] + (dz / dist) * speed,
+            ] as [number, number, number],
+          };
+        }
+        return e;
+      });
+    });
+  });
+
+  // Win check
+  useEffect(() => {
+    if (enemies.length > 0 && enemies.every((e: Enemy) => !e.alive)) {
+      onMatchEnd(stats);
+    }
+  }, [enemies, stats, onMatchEnd]);
 
   return (
     <>
-      <PointerLockControls ref={controls} />
-      <GunModel />
+      <ambientLight intensity={0.4} />
+      <directionalLight position={[15, 25, 10]} intensity={1.4} castShadow />
+      <Sky sunPosition={[100, 40, 80]} />
+      <Physics gravity={[0, -30, 0]}>
+        <Ground />
+        <Walls />
+        <Cover />
+        <GunModel />
+        {enemies.map((e: Enemy) => (
+          <EnemyBot key={e.id} enemy={e} />
+        ))}
+      </Physics>
     </>
   );
 }
 
-function EnemyBot({ enemy }: { enemy: Enemy }) {
-  const color = enemy.faction === "wardog" ? "#ef4444" : "#3b82f6";
-  if (!enemy.alive) return null;
-
-  return (
-    <group position={enemy.position}>
-      <mesh castShadow userData={{ enemyId: enemy.id }}>
-        <capsuleGeometry args={[0.38, 1.15]} />
-        <meshStandardMaterial color={color} />
-      </mesh>
-      <Text position={[0, 1.7, 0]} fontSize={0.28} color="white" anchorX="center" outlineWidth={0.02} outlineColor="#000">
-        {enemy.faction.toUpperCase()}
-      </Text>
-      {/* Health bar */}
-      <Html position={[0, 2.1, 0]} center>
-        <div className="w-16 h-1.5 bg-zinc-800 rounded-full overflow-hidden">
-          <div
-            className="h-full bg-red-500 transition-all"
-            style={{ width: `${(enemy.health / enemy.maxHealth) * 100}%` }}
-          />
-        </div>
-      </Html>
-    </group>
-  );
-}
-
-export function ShooterCanvas({ playerFaction, onMatchEnd, rankBonus = 0 }: Props) {
+export function ShooterCanvas({ playerFaction, onMatchEnd, rankBonus = 0, onExit }: Props) {
   const [stats, setStats] = useState<PlayerStats>({
     health: MAX_HEALTH + rankBonus * 6,
     maxHealth: MAX_HEALTH + rankBonus * 6,
@@ -257,9 +349,9 @@ export function ShooterCanvas({ playerFaction, onMatchEnd, rankBonus = 0 }: Prop
       list.push({
         id: `e-${i}`,
         position: [
-          (Math.random() - 0.5) * ARENA_SIZE * 1.6,
-          1.0,
-          (Math.random() - 0.5) * ARENA_SIZE * 1.6,
+          (Math.random() - 0.5) * ARENA_SIZE * 1.7,
+          1.05,
+          (Math.random() - 0.5) * ARENA_SIZE * 1.7,
         ],
         health: ENEMY_HEALTH,
         maxHealth: ENEMY_HEALTH,
@@ -270,58 +362,157 @@ export function ShooterCanvas({ playerFaction, onMatchEnd, rankBonus = 0 }: Prop
     return list;
   });
 
-  const handleShoot = () => {
-    // muzzle feedback can be added later
+  const [isLocked, setIsLocked] = useState(false);
+  const moveInput = useRef({ x: 0, z: 0 });
+  const lookDelta = useRef({ x: 0, y: 0 });
+
+  // Touch joystick + look + fire
+  const joystickRef = useRef<HTMLDivElement>(null);
+  const [joystickActive, setJoystickActive] = useState(false);
+
+  const onTouchStart = (e: React.TouchEvent) => {
+    // handled per zone
   };
 
-  useEffect(() => {
-    if (enemies.length > 0 && enemies.every((e) => !e.alive)) {
-      onMatchEnd(stats);
-    }
-  }, [enemies, stats, onMatchEnd]);
-
   return (
-    <div className="relative w-full h-[68vh] rounded-2xl overflow-hidden border border-zinc-700 bg-black">
-      <Canvas shadows camera={{ position: [0, PLAYER_HEIGHT, 6], fov: 75 }} gl={{ antialias: true }}>
-        <ambientLight intensity={0.35} />
-        <directionalLight position={[12, 22, 8]} intensity={1.3} castShadow shadow-mapSize={[1024, 1024]} />
-        <Sky sunPosition={[80, 30, 60]} />
-        <Physics gravity={[0, -25, 0]}>
-          <Ground />
-          <Walls />
-          <Cover />
-          <PlayerController
+    <div className="fixed inset-0 z-[200] bg-black flex flex-col">
+      {/* Canvas */}
+      <div className="relative flex-1 w-full h-full">
+        <Canvas
+          shadows
+          camera={{ position: [0, PLAYER_HEIGHT, 8], fov: 75 }}
+          gl={{ antialias: true, powerPreference: "high-performance" }}
+          style={{ width: "100%", height: "100%" }}
+        >
+          <GameWorld
+            playerFaction={playerFaction}
             stats={stats}
             setStats={setStats}
-            onShoot={handleShoot}
             enemies={enemies}
             setEnemies={setEnemies}
+            onMatchEnd={onMatchEnd}
+            moveInput={moveInput}
+            lookDelta={lookDelta}
+            isLocked={isLocked}
+            setIsLocked={setIsLocked}
           />
-          {enemies.map((e) => (
-            <EnemyBot key={e.id} enemy={e} />
-          ))}
-        </Physics>
-      </Canvas>
+        </Canvas>
 
-      {/* HUD */}
-      <div className="absolute inset-0 pointer-events-none select-none">
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-6 h-6 border-2 border-white/90 rounded-full" />
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-1 h-1 bg-white rounded-full" />
+        {/* Crosshair */}
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none">
+          <div className="w-7 h-7 border-2 border-white/90 rounded-full" />
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-1.5 h-1.5 bg-white rounded-full" />
+        </div>
 
-        <div className="absolute bottom-5 left-4 bg-black/75 backdrop-blur px-4 py-2.5 rounded-2xl text-white font-mono text-sm space-y-0.5">
-          <div className="text-emerald-400">HP {Math.round(stats.health)}/{stats.maxHealth}</div>
+        {/* HUD */}
+        <div className="absolute top-4 left-0 right-0 flex justify-center pointer-events-none">
+          <div className="bg-black/60 backdrop-blur px-4 py-1.5 rounded-full text-xs font-black tracking-widest text-white/90">
+            BATTLEFIELD • {playerFaction.toUpperCase()} FORCE
+          </div>
+        </div>
+
+        <div className="absolute bottom-28 left-4 bg-black/80 backdrop-blur-md px-4 py-3 rounded-2xl text-white font-mono text-sm space-y-1 pointer-events-none">
+          <div className="text-emerald-400 font-bold">HP {Math.round(stats.health)}/{stats.maxHealth}</div>
           <div>AMMO {stats.ammo}/{stats.maxAmmo}</div>
           <div className="text-amber-400">KILLS {stats.kills}</div>
         </div>
 
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 text-white/90 text-xs font-black tracking-[0.2em]">
-          BATTLEFIELD • {playerFaction.toUpperCase()} FORCE
+        {/* EXIT */}
+        <button
+          onClick={onExit}
+          className="absolute top-4 right-4 z-50 bg-red-600/90 hover:bg-red-500 text-white font-black px-4 py-2 rounded-xl text-sm"
+        >
+          EXIT
+        </button>
+
+        {/* Mobile Controls */}
+        <div className="absolute inset-0 pointer-events-none">
+          {/* Left Joystick zone */}
+          <div
+            className="absolute bottom-8 left-6 w-32 h-32 pointer-events-auto"
+            onTouchStart={(e) => {
+              e.preventDefault();
+              setJoystickActive(true);
+              const touch = e.touches[0];
+              const rect = e.currentTarget.getBoundingClientRect();
+              const cx = rect.left + rect.width / 2;
+              const cy = rect.top + rect.height / 2;
+              const dx = (touch.clientX - cx) / (rect.width / 2);
+              const dy = (touch.clientY - cy) / (rect.height / 2);
+              moveInput.current = {
+                x: Math.max(-1, Math.min(1, dx)),
+                z: Math.max(-1, Math.min(1, dy)),
+              };
+            }}
+            onTouchMove={(e) => {
+              e.preventDefault();
+              const touch = e.touches[0];
+              const rect = e.currentTarget.getBoundingClientRect();
+              const cx = rect.left + rect.width / 2;
+              const cy = rect.top + rect.height / 2;
+              const dx = (touch.clientX - cx) / (rect.width / 2);
+              const dy = (touch.clientY - cy) / (rect.height / 2);
+              moveInput.current = {
+                x: Math.max(-1, Math.min(1, dx)),
+                z: Math.max(-1, Math.min(1, dy)),
+              };
+            }}
+            onTouchEnd={() => {
+              setJoystickActive(false);
+              moveInput.current = { x: 0, z: 0 };
+            }}
+          >
+            <div className={`w-full h-full rounded-full border-2 border-white/40 bg-black/40 flex items-center justify-center ${joystickActive ? "scale-110" : ""}`}>
+              <div className="w-14 h-14 rounded-full bg-white/30" />
+            </div>
+          </div>
+
+          {/* Right look zone + Fire */}
+          <div
+            className="absolute inset-0 right-0 w-1/2 pointer-events-auto"
+            onTouchStart={(e) => {
+              // start look
+            }}
+            onTouchMove={(e) => {
+              e.preventDefault();
+              const touch = e.touches[0];
+              // simple delta look
+              lookDelta.current.x = (touch.clientX - (window.innerWidth * 0.75)) * 0.08;
+              lookDelta.current.y = (touch.clientY - window.innerHeight / 2) * 0.06;
+            }}
+            onTouchEnd={() => {
+              lookDelta.current = { x: 0, y: 0 };
+            }}
+          />
+
+          {/* FIRE button */}
+          <button
+            className="absolute bottom-10 right-8 w-24 h-24 rounded-full bg-red-600/90 border-4 border-red-400 text-white font-black text-lg shadow-2xl active:scale-95 pointer-events-auto flex items-center justify-center"
+            onTouchStart={(e) => {
+              e.preventDefault();
+              // continuous fire while held can be added later
+              const event = new MouseEvent("click", { bubbles: true });
+              // trigger shoot via a ref or direct call – for simplicity we use a global-ish pattern
+              // Better: expose shoot via ref, but for now we rely on the canvas click path + manual
+            }}
+            onClick={() => {
+              // Desktop fallback + mobile
+              const canvas = document.querySelector("canvas");
+              if (canvas) canvas.click();
+            }}
+          >
+            FIRE
+          </button>
         </div>
 
-        <div className="absolute bottom-5 right-4 text-white/50 text-[11px] text-right">
-          Click to lock mouse<br />
-          WASD move • LMB shoot
-        </div>
+        {/* Desktop hint */}
+        {!isLocked && (
+          <div className="absolute bottom-36 left-1/2 -translate-x-1/2 text-white/70 text-sm pointer-events-none text-center">
+            Click to lock mouse • WASD move • LMB shoot
+            <br />
+            <span className="text-xs">Mobile: Joystick + drag right side + FIRE</span>
+          </div>
+        )}
       </div>
     </div>
   );
