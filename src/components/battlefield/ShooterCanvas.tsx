@@ -64,8 +64,6 @@ function MapCover() {
     { pos: [11, 1.0, -11] as [number,number,number], size: [5, 2.0, 2.8] as [number,number,number] },
     { pos: [-6, 2.8, 14] as [number,number,number], size: [6, 0.6, 4] as [number,number,number] },
     { pos: [7, 2.6, -13] as [number,number,number], size: [5, 0.6, 4.5] as [number,number,number] },
-    { pos: [-16, 1.4, 0] as [number,number,number], size: [2, 2.8, 8] as [number,number,number] },
-    { pos: [16, 1.4, 3] as [number,number,number], size: [2, 2.8, 7] as [number,number,number] },
   ], []);
   return (
     <group>
@@ -179,7 +177,7 @@ function GameLogic(props: any) {
     recoilOffset.current += RECOIL_AMOUNT;
     setRecoil(recoilOffset.current);
     setMuzzle(true);
-    setTimeout(() => setMuzzle(false), 45);
+    setTimeout(() => setMuzzle(false), 40);
 
     raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
     const hits = raycaster.intersectObjects(scene.children, true);
@@ -208,22 +206,21 @@ function GameLogic(props: any) {
   useFrame((_, delta) => {
     if (isFiring) doShoot();
 
-    // Look from right joystick
+    // Look
     if (lookInput.current.x !== 0 || lookInput.current.y !== 0) {
       euler.current.setFromQuaternion(camera.quaternion);
-      euler.current.y -= lookInput.current.x * 2.8 * delta;
-      euler.current.x -= lookInput.current.y * 2.2 * delta;
-      euler.current.x = THREE.MathUtils.clamp(euler.current.x, -1.25, 1.25);
+      euler.current.y -= lookInput.current.x * 2.6 * delta;
+      euler.current.x -= lookInput.current.y * 2.1 * delta;
+      euler.current.x = THREE.MathUtils.clamp(euler.current.x, -1.2, 1.2);
       camera.quaternion.setFromEuler(euler.current);
     }
 
-    // Recoil recovery
     if (recoilOffset.current > 0) {
       recoilOffset.current = Math.max(0, recoilOffset.current - delta * RECOIL_RECOVERY);
       setRecoil(recoilOffset.current);
     }
 
-    // Movement from left joystick + keyboard
+    // Movement
     const forward = new THREE.Vector3();
     camera.getWorldDirection(forward);
     forward.y = 0;
@@ -250,7 +247,7 @@ function GameLogic(props: any) {
     camera.position.x = THREE.MathUtils.clamp(camera.position.x, -ARENA_SIZE + 2.5, ARENA_SIZE - 2.5);
     camera.position.z = THREE.MathUtils.clamp(camera.position.z, -ARENA_SIZE + 2.5, ARENA_SIZE - 2.5);
 
-    // Simple enemy movement + delayed fire
+    // Enemies
     const now = performance.now() / 1000;
     const invuln = now < invulnerableUntil.current;
 
@@ -262,7 +259,7 @@ function GameLogic(props: any) {
         const dist = Math.hypot(dx, dz) || 1;
 
         let pos = e.position;
-        if (dist > 4.2) {
+        if (dist > 4.5) {
           const speed = ENEMY_SPEED * delta;
           pos = [
             e.position[0] + (dx / dist) * speed,
@@ -272,7 +269,7 @@ function GameLogic(props: any) {
         }
 
         let last = e.lastShot;
-        if (!invuln && dist < ENEMY_RANGE && now - e.lastShot > ENEMY_FIRE_RATE && Math.random() < 0.35) {
+        if (!invuln && dist < ENEMY_RANGE && now - e.lastShot > ENEMY_FIRE_RATE && Math.random() < 0.3) {
           last = now;
           setStats((s: PlayerStats) => {
             const hp = Math.max(0, s.health - ENEMY_DAMAGE);
@@ -294,9 +291,9 @@ function GameLogic(props: any) {
   return (
     <>
       <color attach="background" args={["#0a0a12"]} />
-      <fog attach="fog" args={["#0a0a12", 32, 75]} />
-      <ambientLight intensity={0.3} />
-      <directionalLight position={[16, 26, 10]} intensity={1.45} castShadow />
+      <fog attach="fog" args={["#0a0a12", 30, 70]} />
+      <ambientLight intensity={0.32} />
+      <directionalLight position={[16, 26, 10]} intensity={1.4} castShadow />
       <Sky sunPosition={[80, 28, 50]} />
       <Physics gravity={[0, -30, 0]}>
         <Ground />
@@ -307,7 +304,7 @@ function GameLogic(props: any) {
           <EnemyBot
             key={e.id}
             enemy={e}
-            hitFlash={!!hitFlashes[e.id] && Date.now() - hitFlashes[e.id] < 100}
+            hitFlash={!!hitFlashes[e.id] && Date.now() - hitFlashes[e.id] < 90}
           />
         ))}
       </Physics>
@@ -329,7 +326,7 @@ export function ShooterCanvas({ playerFaction, onMatchEnd, rankBonus = 0, onExit
     const now = performance.now() / 1000;
     return Array.from({ length: ENEMY_COUNT }, (_, i) => {
       const angle = (i / ENEMY_COUNT) * Math.PI * 2;
-      const r = 16 + Math.random() * 10;
+      const r = 16 + Math.random() * 9;
       return {
         id: `e-${i}`,
         position: [Math.cos(angle) * r, 1.1, Math.sin(angle) * r] as [number, number, number],
@@ -337,7 +334,7 @@ export function ShooterCanvas({ playerFaction, onMatchEnd, rankBonus = 0, onExit
         maxHealth: ENEMY_HEALTH,
         faction: (playerFaction === "wardog" ? "warcat" : "wardog") as Faction,
         alive: true,
-        lastShot: now + 3.2 + Math.random() * 2.8,
+        lastShot: now + 3.5 + Math.random() * 2.5,
       };
     });
   });
@@ -349,34 +346,54 @@ export function ShooterCanvas({ playerFaction, onMatchEnd, rankBonus = 0, onExit
   const [recoil, setRecoil] = useState(0);
   const [hitFlashes, setHitFlashes] = useState<Record<string, number>>({});
   const invulnerableUntil = useRef(performance.now() / 1000 + 4);
+  const [ready, setReady] = useState(false);
 
-  // Joystick helper
-  const handleJoystick = (
+  // Fix black screen – force Canvas to mount cleanly
+  useEffect(() => {
+    const t = setTimeout(() => setReady(true), 80);
+    return () => clearTimeout(t);
+  }, []);
+
+  const handleStick = (
     e: React.PointerEvent,
-    ref: React.MutableRefObject<{ x: number; z?: number; y?: number }>,
+    ref: React.MutableRefObject<any>,
     isLook = false
   ) => {
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     const cx = rect.left + rect.width / 2;
     const cy = rect.top + rect.height / 2;
-    const dx = (e.clientX - cx) / (rect.width / 2);
-    const dy = (e.clientY - cy) / (rect.height / 2);
-    const x = Math.max(-1, Math.min(1, dx));
-    const y = Math.max(-1, Math.min(1, dy));
+    const dx = Math.max(-1, Math.min(1, (e.clientX - cx) / (rect.width / 2)));
+    const dy = Math.max(-1, Math.min(1, (e.clientY - cy) / (rect.height / 2)));
 
     if (isLook) {
-      ref.current = { x, y };
+      ref.current = { x: dx, y: dy };
     } else {
-      ref.current = { x, z: y };
+      ref.current = { x: dx, z: dy };
     }
   };
+
+  if (!ready) {
+    return (
+      <div className="fixed inset-0 z-[200] bg-black flex items-center justify-center text-white">
+        <div className="text-center">
+          <div className="text-lg font-bold mb-2">Loading Battlefield...</div>
+          <div className="text-sm text-white/60">Preparing arena</div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 z-[200] bg-black select-none touch-none overflow-hidden">
       <Canvas
+        key="battlefield-canvas"
         shadows
         camera={{ position: [0, PLAYER_HEIGHT, 8], fov: 72 }}
-        gl={{ antialias: true, powerPreference: "high-performance" }}
+        gl={{ antialias: true, powerPreference: "high-performance", alpha: false }}
+        onCreated={({ gl }) => {
+          gl.setClearColor("#0a0a12");
+          gl.shadowMap.type = THREE.PCFShadowMap;
+        }}
       >
         <GameLogic
           stats={stats}
@@ -402,7 +419,7 @@ export function ShooterCanvas({ playerFaction, onMatchEnd, rankBonus = 0, onExit
         <div className="absolute inset-0 m-auto w-1.5 h-1.5 bg-white rounded-full" />
       </div>
 
-      {/* Top bar */}
+      {/* Top */}
       <div className="absolute top-3 left-0 right-0 flex justify-between items-center px-4 z-20">
         <div className="bg-black/70 px-3 py-1.5 rounded-full text-xs font-black text-white">
           {playerFaction.toUpperCase()}
@@ -413,7 +430,7 @@ export function ShooterCanvas({ playerFaction, onMatchEnd, rankBonus = 0, onExit
       </div>
 
       {/* HUD */}
-      <div className="absolute bottom-44 left-4 bg-black/80 px-4 py-3 rounded-2xl text-white font-mono text-sm space-y-1 pointer-events-none z-10">
+      <div className="absolute bottom-48 left-4 bg-black/80 px-4 py-3 rounded-2xl text-white font-mono text-sm space-y-1 pointer-events-none z-10">
         <div className={stats.health < 30 ? "text-red-400 font-bold" : "text-emerald-400 font-bold"}>
           HP {Math.round(stats.health)}/{stats.maxHealth}
         </div>
@@ -421,61 +438,53 @@ export function ShooterCanvas({ playerFaction, onMatchEnd, rankBonus = 0, onExit
         <div className="text-amber-400">KILLS {stats.kills}</div>
       </div>
 
-      {/* LEFT JOYSTICK – Movement (full 360°) */}
+      {/* LEFT – MOVE */}
       <div
-        className="absolute bottom-10 left-5 w-36 h-36 rounded-full border-2 border-white/40 bg-black/60 flex items-center justify-center z-30"
+        className="absolute bottom-8 left-4 w-36 h-36 rounded-full border-2 border-white/40 bg-black/60 flex items-center justify-center z-30"
         onPointerDown={(e) => {
           e.currentTarget.setPointerCapture(e.pointerId);
-          handleJoystick(e, moveInput, false);
+          handleStick(e, moveInput, false);
         }}
         onPointerMove={(e) => {
-          if (e.currentTarget.hasPointerCapture(e.pointerId)) {
-            handleJoystick(e, moveInput, false);
-          }
+          if (e.currentTarget.hasPointerCapture(e.pointerId)) handleStick(e, moveInput, false);
         }}
         onPointerUp={(e) => {
           e.currentTarget.releasePointerCapture(e.pointerId);
           moveInput.current = { x: 0, z: 0 };
         }}
       >
-        <div className="w-16 h-16 rounded-full bg-white/30 shadow-inner" />
-        <div className="absolute -top-6 text-[10px] text-white/50 font-bold">MOVE</div>
+        <div className="w-16 h-16 rounded-full bg-white/25" />
+        <span className="absolute -top-5 text-[10px] text-white/60 font-bold">MOVE</span>
       </div>
 
-      {/* RIGHT JOYSTICK – Look */}
+      {/* RIGHT – LOOK + FIRE (hold to shoot) */}
       <div
-        className="absolute bottom-10 right-5 w-36 h-36 rounded-full border-2 border-white/40 bg-black/60 flex items-center justify-center z-30"
+        className="absolute bottom-8 right-4 w-36 h-36 rounded-full border-2 border-red-500/70 bg-black/60 flex items-center justify-center z-30"
         onPointerDown={(e) => {
           e.currentTarget.setPointerCapture(e.pointerId);
-          handleJoystick(e, lookInput, true);
+          setIsFiring(true);               // start shooting
+          handleStick(e, lookInput, true);
         }}
         onPointerMove={(e) => {
           if (e.currentTarget.hasPointerCapture(e.pointerId)) {
-            handleJoystick(e, lookInput, true);
+            handleStick(e, lookInput, true);
           }
         }}
         onPointerUp={(e) => {
           e.currentTarget.releasePointerCapture(e.pointerId);
+          setIsFiring(false);              // stop shooting
+          lookInput.current = { x: 0, y: 0 };
+        }}
+        onPointerCancel={() => {
+          setIsFiring(false);
           lookInput.current = { x: 0, y: 0 };
         }}
       >
-        <div className="w-16 h-16 rounded-full bg-white/30 shadow-inner" />
-        <div className="absolute -top-6 text-[10px] text-white/50 font-bold">LOOK</div>
+        <div className="w-16 h-16 rounded-full bg-red-600/80 flex items-center justify-center">
+          <span className="text-white font-black text-xs">FIRE</span>
+        </div>
+        <span className="absolute -top-5 text-[10px] text-white/60 font-bold">LOOK + FIRE</span>
       </div>
-
-      {/* FIRE button – centered between the two sticks or slightly above */}
-      <button
-        className="absolute bottom-28 left-1/2 -translate-x-1/2 w-20 h-20 rounded-full bg-red-600 border-4 border-red-400 text-white font-black text-sm z-40 active:scale-90 shadow-xl"
-        onPointerDown={(e) => {
-          e.preventDefault();
-          setIsFiring(true);
-        }}
-        onPointerUp={() => setIsFiring(false)}
-        onPointerLeave={() => setIsFiring(false)}
-        onPointerCancel={() => setIsFiring(false)}
-      >
-        FIRE
-      </button>
     </div>
   );
 }
