@@ -16,4 +16,5 @@ export interface Enemy {
   maxHealth: number;
   faction: Faction;
   alive: boolean;
+  lastShot: number;
 }
