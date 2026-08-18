@@ -1,5 +1,5 @@
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { Sky, Text, Html, Cloud } from "@react-three/drei";
+import { Sky, Text, Html } from "@react-three/drei";
 import { Physics, RigidBody } from "@react-three/rapier";
 import { useRef, useState, useEffect, useCallback, useMemo } from "react";
 import * as THREE from "three";
@@ -35,7 +35,7 @@ function Ground() {
     <RigidBody type="fixed" colliders="cuboid">
       <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
         <planeGeometry args={[ARENA_SIZE * 2.6, ARENA_SIZE * 2.6]} />
-        <meshStandardMaterial color="#111111" roughness={0.92} />
+        <meshStandardMaterial color="#111" roughness={0.92} />
       </mesh>
     </RigidBody>
   );
@@ -47,29 +47,26 @@ function Walls() {
   const mat = <meshStandardMaterial color="#161616" roughness={0.85} />;
   return (
     <group>
-      <RigidBody type="fixed"><mesh position={[0, h / 2, -s]}><boxGeometry args={[s * 2.6, h, 1.6]} />{mat}</mesh></RigidBody>
-      <RigidBody type="fixed"><mesh position={[0, h / 2, s]}><boxGeometry args={[s * 2.6, h, 1.6]} />{mat}</mesh></RigidBody>
-      <RigidBody type="fixed"><mesh position={[-s, h / 2, 0]}><boxGeometry args={[1.6, h, s * 2.6]} />{mat}</mesh></RigidBody>
-      <RigidBody type="fixed"><mesh position={[s, h / 2, 0]}><boxGeometry args={[1.6, h, s * 2.6]} />{mat}</mesh></RigidBody>
+      <RigidBody type="fixed"><mesh position={[0, h/2, -s]}><boxGeometry args={[s*2.6, h, 1.6]} />{mat}</mesh></RigidBody>
+      <RigidBody type="fixed"><mesh position={[0, h/2, s]}><boxGeometry args={[s*2.6, h, 1.6]} />{mat}</mesh></RigidBody>
+      <RigidBody type="fixed"><mesh position={[-s, h/2, 0]}><boxGeometry args={[1.6, h, s*2.6]} />{mat}</mesh></RigidBody>
+      <RigidBody type="fixed"><mesh position={[s, h/2, 0]}><boxGeometry args={[1.6, h, s*2.6]} />{mat}</mesh></RigidBody>
     </group>
   );
 }
 
 function MapCover() {
   const pieces = useMemo(() => [
-    { pos: [0, 1.3, 0] as [number, number, number], size: [4.5, 2.6, 4.5] as [number, number, number] },
-    { pos: [-8, 1.1, -6] as [number, number, number], size: [3.2, 2.2, 3.2] as [number, number, number] },
-    { pos: [9, 1.1, 7] as [number, number, number], size: [3.5, 2.3, 3] as [number, number, number] },
-    { pos: [-12, 1.2, 10] as [number, number, number], size: [2.8, 2.4, 5] as [number, number, number] },
-    { pos: [11, 1.0, -11] as [number, number, number], size: [5, 2.0, 2.8] as [number, number, number] },
-    { pos: [-6, 2.8, 14] as [number, number, number], size: [6, 0.6, 4] as [number, number, number] },
-    { pos: [7, 2.6, -13] as [number, number, number], size: [5, 0.6, 4.5] as [number, number, number] },
-    { pos: [-16, 1.4, 0] as [number, number, number], size: [2, 2.8, 8] as [number, number, number] },
-    { pos: [16, 1.4, 3] as [number, number, number], size: [2, 2.8, 7] as [number, number, number] },
-    { pos: [0, 1.2, -16] as [number, number, number], size: [9, 2.4, 2] as [number, number, number] },
-    { pos: [3, 1.2, 17] as [number, number, number], size: [8, 2.4, 2] as [number, number, number] },
+    { pos: [0, 1.3, 0] as [number,number,number], size: [4.5, 2.6, 4.5] as [number,number,number] },
+    { pos: [-8, 1.1, -6] as [number,number,number], size: [3.2, 2.2, 3.2] as [number,number,number] },
+    { pos: [9, 1.1, 7] as [number,number,number], size: [3.5, 2.3, 3] as [number,number,number] },
+    { pos: [-12, 1.2, 10] as [number,number,number], size: [2.8, 2.4, 5] as [number,number,number] },
+    { pos: [11, 1.0, -11] as [number,number,number], size: [5, 2.0, 2.8] as [number,number,number] },
+    { pos: [-6, 2.8, 14] as [number,number,number], size: [6, 0.6, 4] as [number,number,number] },
+    { pos: [7, 2.6, -13] as [number,number,number], size: [5, 0.6, 4.5] as [number,number,number] },
+    { pos: [-16, 1.4, 0] as [number,number,number], size: [2, 2.8, 8] as [number,number,number] },
+    { pos: [16, 1.4, 3] as [number,number,number], size: [2, 2.8, 7] as [number,number,number] },
   ], []);
-
   return (
     <group>
       {pieces.map((p, i) => (
@@ -86,7 +83,7 @@ function MapCover() {
 
 function GunModel({ recoil }: { recoil: number }) {
   return (
-    <group position={[0.33, -0.29 - recoil * 0.12, -0.55]} rotation={[0.14 + recoil * 1.6, 0.16, recoil * 0.35]}>
+    <group position={[0.33, -0.29 - recoil * 0.12, -0.55]} rotation={[0.14 + recoil * 1.5, 0.16, recoil * 0.3]}>
       <mesh>
         <boxGeometry args={[0.08, 0.13, 0.46]} />
         <meshStandardMaterial color="#0d0d0d" metalness={0.95} roughness={0.18} />
@@ -103,7 +100,7 @@ function MuzzleFlash({ active }: { active: boolean }) {
   if (!active) return null;
   return (
     <group position={[0.33, -0.22, -0.85]}>
-      <pointLight intensity={16} distance={8} color="#ffaa44" />
+      <pointLight intensity={14} distance={7} color="#ffaa44" />
       <mesh>
         <sphereGeometry args={[0.08, 8, 8]} />
         <meshBasicMaterial color="#ffcc66" transparent opacity={0.85} />
@@ -115,8 +112,7 @@ function MuzzleFlash({ active }: { active: boolean }) {
 function EnemyBot({ enemy, hitFlash }: { enemy: Enemy; hitFlash: boolean }) {
   if (!enemy.alive) return null;
   const base = enemy.faction === "wardog" ? "#ef4444" : "#3b82f6";
-  const color = hitFlash ? "#ffffff" : base;
-
+  const color = hitFlash ? "#fff" : base;
   return (
     <group position={enemy.position}>
       <mesh castShadow userData={{ enemyId: enemy.id }}>
@@ -142,8 +138,8 @@ function EnemyBot({ enemy, hitFlash }: { enemy: Enemy; hitFlash: boolean }) {
 function GameLogic(props: any) {
   const {
     stats, setStats, enemies, setEnemies, onMatchEnd,
-    moveInput, lookDelta, isFiring, setMuzzle, setRecoil,
-    hitFlashes, setHitFlashes, invulnerableUntil, enemyPositions
+    moveInput, lookInput, isFiring, setMuzzle, setRecoil,
+    hitFlashes, setHitFlashes, invulnerableUntil
   } = props;
 
   const { camera, scene, raycaster } = useThree();
@@ -180,15 +176,13 @@ function GameLogic(props: any) {
 
     lastShot.current = now;
     setStats((s: PlayerStats) => ({ ...s, ammo: Math.max(0, s.ammo - 1) }));
-
     recoilOffset.current += RECOIL_AMOUNT;
     setRecoil(recoilOffset.current);
     setMuzzle(true);
-    setTimeout(() => setMuzzle(false), 50);
+    setTimeout(() => setMuzzle(false), 45);
 
     raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
     const hits = raycaster.intersectObjects(scene.children, true);
-
     for (const hit of hits) {
       const id = hit.object.userData?.enemyId;
       if (id) {
@@ -214,15 +208,13 @@ function GameLogic(props: any) {
   useFrame((_, delta) => {
     if (isFiring) doShoot();
 
-    // Look (stable)
-    if (lookDelta.current.x !== 0 || lookDelta.current.y !== 0) {
+    // Look from right joystick
+    if (lookInput.current.x !== 0 || lookInput.current.y !== 0) {
       euler.current.setFromQuaternion(camera.quaternion);
-      euler.current.y -= lookDelta.current.x;
-      euler.current.x -= lookDelta.current.y;
-      euler.current.x = THREE.MathUtils.clamp(euler.current.x, -1.3, 1.3);
+      euler.current.y -= lookInput.current.x * 2.8 * delta;
+      euler.current.x -= lookInput.current.y * 2.2 * delta;
+      euler.current.x = THREE.MathUtils.clamp(euler.current.x, -1.25, 1.25);
       camera.quaternion.setFromEuler(euler.current);
-      lookDelta.current.x = 0;
-      lookDelta.current.y = 0;
     }
 
     // Recoil recovery
@@ -231,7 +223,7 @@ function GameLogic(props: any) {
       setRecoil(recoilOffset.current);
     }
 
-    // Movement
+    // Movement from left joystick + keyboard
     const forward = new THREE.Vector3();
     camera.getWorldDirection(forward);
     forward.y = 0;
@@ -240,6 +232,7 @@ function GameLogic(props: any) {
 
     let mx = moveInput.current.x;
     let mz = moveInput.current.z;
+
     if (keys.current.w) mz -= 1;
     if (keys.current.s) mz += 1;
     if (keys.current.a) mx -= 1;
@@ -247,7 +240,8 @@ function GameLogic(props: any) {
 
     if (mx !== 0 || mz !== 0) {
       const len = Math.hypot(mx, mz) || 1;
-      mx /= len; mz /= len;
+      mx /= len;
+      mz /= len;
       camera.position.x += (forward.x * -mz + right.x * mx) * PLAYER_SPEED * delta;
       camera.position.z += (forward.z * -mz + right.z * mx) * PLAYER_SPEED * delta;
     }
@@ -256,58 +250,40 @@ function GameLogic(props: any) {
     camera.position.x = THREE.MathUtils.clamp(camera.position.x, -ARENA_SIZE + 2.5, ARENA_SIZE - 2.5);
     camera.position.z = THREE.MathUtils.clamp(camera.position.z, -ARENA_SIZE + 2.5, ARENA_SIZE - 2.5);
 
-    // Enemy movement (using refs for stability)
+    // Simple enemy movement + delayed fire
     const now = performance.now() / 1000;
     const invuln = now < invulnerableUntil.current;
 
-    enemies.forEach((e: Enemy, i: number) => {
-      if (!e.alive) return;
+    setEnemies((prev: Enemy[]) =>
+      prev.map((e) => {
+        if (!e.alive) return e;
+        const dx = camera.position.x - e.position[0];
+        const dz = camera.position.z - e.position[2];
+        const dist = Math.hypot(dx, dz) || 1;
 
-      const pos = enemyPositions.current[e.id] || e.position;
-      const dx = camera.position.x - pos[0];
-      const dz = camera.position.z - pos[2];
-      const dist = Math.hypot(dx, dz) || 1;
+        let pos = e.position;
+        if (dist > 4.2) {
+          const speed = ENEMY_SPEED * delta;
+          pos = [
+            e.position[0] + (dx / dist) * speed,
+            e.position[1],
+            e.position[2] + (dz / dist) * speed,
+          ] as [number, number, number];
+        }
 
-      if (dist > 4) {
-        const speed = ENEMY_SPEED * delta;
-        const newPos: [number, number, number] = [
-          pos[0] + (dx / dist) * speed,
-          pos[1],
-          pos[2] + (dz / dist) * speed,
-        ];
-        enemyPositions.current[e.id] = newPos;
-      }
-
-      // Only closest 2 enemies shoot, and only after delay
-      if (!invuln && dist < ENEMY_RANGE && now - e.lastShot > ENEMY_FIRE_RATE) {
-        // simple check if this is one of the closest
-        // (we keep it simple for stability)
-        if (Math.random() < 0.4) { // reduce spam
-          e.lastShot = now;
+        let last = e.lastShot;
+        if (!invuln && dist < ENEMY_RANGE && now - e.lastShot > ENEMY_FIRE_RATE && Math.random() < 0.35) {
+          last = now;
           setStats((s: PlayerStats) => {
             const hp = Math.max(0, s.health - ENEMY_DAMAGE);
-            if (hp <= 0) {
-              setTimeout(() => onMatchEnd({ ...s, health: 0 }), 300);
-            }
+            if (hp <= 0) setTimeout(() => onMatchEnd({ ...s, health: 0 }), 300);
             return { ...s, health: hp };
           });
         }
-      }
-    });
+        return { ...e, position: pos, lastShot: last };
+      })
+    );
   });
-
-  // Sync positions back to React state less frequently
-  useEffect(() => {
-    const id = setInterval(() => {
-      setEnemies((prev: Enemy[]) =>
-        prev.map((e) => ({
-          ...e,
-          position: enemyPositions.current[e.id] || e.position,
-        }))
-      );
-    }, 200); // only 5 times per second
-    return () => clearInterval(id);
-  }, []);
 
   useEffect(() => {
     if (enemies.length > 0 && enemies.every((e: Enemy) => !e.alive)) {
@@ -318,10 +294,10 @@ function GameLogic(props: any) {
   return (
     <>
       <color attach="background" args={["#0a0a12"]} />
-      <fog attach="fog" args={["#0a0a12", 32, 78]} />
+      <fog attach="fog" args={["#0a0a12", 32, 75]} />
       <ambientLight intensity={0.3} />
-      <directionalLight position={[16, 26, 10]} intensity={1.5} castShadow />
-      <Sky sunPosition={[80, 30, 50]} />
+      <directionalLight position={[16, 26, 10]} intensity={1.45} castShadow />
+      <Sky sunPosition={[80, 28, 50]} />
       <Physics gravity={[0, -30, 0]}>
         <Ground />
         <Walls />
@@ -330,10 +306,7 @@ function GameLogic(props: any) {
         {enemies.map((e: Enemy) => (
           <EnemyBot
             key={e.id}
-            enemy={{
-              ...e,
-              position: enemyPositions.current[e.id] || e.position,
-            }}
+            enemy={e}
             hitFlash={!!hitFlashes[e.id] && Date.now() - hitFlashes[e.id] < 100}
           />
         ))}
@@ -354,69 +327,49 @@ export function ShooterCanvas({ playerFaction, onMatchEnd, rankBonus = 0, onExit
 
   const [enemies, setEnemies] = useState<Enemy[]>(() => {
     const now = performance.now() / 1000;
-    const list: Enemy[] = [];
-    for (let i = 0; i < ENEMY_COUNT; i++) {
+    return Array.from({ length: ENEMY_COUNT }, (_, i) => {
       const angle = (i / ENEMY_COUNT) * Math.PI * 2;
       const r = 16 + Math.random() * 10;
-      list.push({
+      return {
         id: `e-${i}`,
-        position: [Math.cos(angle) * r, 1.1, Math.sin(angle) * r],
+        position: [Math.cos(angle) * r, 1.1, Math.sin(angle) * r] as [number, number, number],
         health: ENEMY_HEALTH,
         maxHealth: ENEMY_HEALTH,
-        faction: playerFaction === "wardog" ? "warcat" : "wardog",
+        faction: (playerFaction === "wardog" ? "warcat" : "wardog") as Faction,
         alive: true,
-        lastShot: now + 3 + Math.random() * 3,
-      });
-    }
-    return list;
+        lastShot: now + 3.2 + Math.random() * 2.8,
+      };
+    });
   });
 
   const moveInput = useRef({ x: 0, z: 0 });
-  const lookDelta = useRef({ x: 0, y: 0 });
+  const lookInput = useRef({ x: 0, y: 0 });
   const [isFiring, setIsFiring] = useState(false);
   const [muzzle, setMuzzle] = useState(false);
   const [recoil, setRecoil] = useState(0);
   const [hitFlashes, setHitFlashes] = useState<Record<string, number>>({});
-  const lastTouch = useRef<{ x: number; y: number } | null>(null);
-  const invulnerableUntil = useRef(performance.now() / 1000 + 3.8);
-  const enemyPositions = useRef<Record<string, [number, number, number]>>({});
-  const isUIActive = useRef(false); // critical for stability
+  const invulnerableUntil = useRef(performance.now() / 1000 + 4);
 
-  // Initialize positions
-  useEffect(() => {
-    enemies.forEach((e) => {
-      enemyPositions.current[e.id] = e.position;
-    });
-  }, []);
+  // Joystick helper
+  const handleJoystick = (
+    e: React.PointerEvent,
+    ref: React.MutableRefObject<{ x: number; z?: number; y?: number }>,
+    isLook = false
+  ) => {
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    const dx = (e.clientX - cx) / (rect.width / 2);
+    const dy = (e.clientY - cy) / (rect.height / 2);
+    const x = Math.max(-1, Math.min(1, dx));
+    const y = Math.max(-1, Math.min(1, dy));
 
-  // Stable look – ignores UI
-  useEffect(() => {
-    const onPointerMove = (e: PointerEvent) => {
-      if (isUIActive.current) return;
-      if (e.pointerType === "mouse" && e.buttons === 0) return;
-
-      if (!lastTouch.current) {
-        lastTouch.current = { x: e.clientX, y: e.clientY };
-        return;
-      }
-      const dx = e.clientX - lastTouch.current.x;
-      const dy = e.clientY - lastTouch.current.y;
-      lookDelta.current.x += dx * LOOK_SENSITIVITY * 1.7;
-      lookDelta.current.y += dy * LOOK_SENSITIVITY * 1.7;
-      lastTouch.current = { x: e.clientX, y: e.clientY };
-    };
-
-    const onPointerUp = () => {
-      lastTouch.current = null;
-    };
-
-    window.addEventListener("pointermove", onPointerMove, { passive: true });
-    window.addEventListener("pointerup", onPointerUp);
-    return () => {
-      window.removeEventListener("pointermove", onPointerMove);
-      window.removeEventListener("pointerup", onPointerUp);
-    };
-  }, []);
+    if (isLook) {
+      ref.current = { x, y };
+    } else {
+      ref.current = { x, z: y };
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-[200] bg-black select-none touch-none overflow-hidden">
@@ -424,9 +377,6 @@ export function ShooterCanvas({ playerFaction, onMatchEnd, rankBonus = 0, onExit
         shadows
         camera={{ position: [0, PLAYER_HEIGHT, 8], fov: 72 }}
         gl={{ antialias: true, powerPreference: "high-performance" }}
-        onCreated={({ gl }) => {
-          gl.shadowMap.type = THREE.PCFShadowMap;
-        }}
       >
         <GameLogic
           stats={stats}
@@ -435,20 +385,19 @@ export function ShooterCanvas({ playerFaction, onMatchEnd, rankBonus = 0, onExit
           setEnemies={setEnemies}
           onMatchEnd={onMatchEnd}
           moveInput={moveInput}
-          lookDelta={lookDelta}
+          lookInput={lookInput}
           isFiring={isFiring}
           setMuzzle={setMuzzle}
           setRecoil={setRecoil}
           hitFlashes={hitFlashes}
           setHitFlashes={setHitFlashes}
           invulnerableUntil={invulnerableUntil}
-          enemyPositions={enemyPositions}
         />
         <MuzzleFlash active={muzzle} />
       </Canvas>
 
       {/* Crosshair */}
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none">
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none z-10">
         <div className="w-7 h-7 border-2 border-white/90 rounded-full" />
         <div className="absolute inset-0 m-auto w-1.5 h-1.5 bg-white rounded-full" />
       </div>
@@ -464,7 +413,7 @@ export function ShooterCanvas({ playerFaction, onMatchEnd, rankBonus = 0, onExit
       </div>
 
       {/* HUD */}
-      <div className="absolute bottom-40 left-4 bg-black/80 px-4 py-3 rounded-2xl text-white font-mono text-sm space-y-1 pointer-events-none">
+      <div className="absolute bottom-44 left-4 bg-black/80 px-4 py-3 rounded-2xl text-white font-mono text-sm space-y-1 pointer-events-none z-10">
         <div className={stats.health < 30 ? "text-red-400 font-bold" : "text-emerald-400 font-bold"}>
           HP {Math.round(stats.health)}/{stats.maxHealth}
         </div>
@@ -472,60 +421,58 @@ export function ShooterCanvas({ playerFaction, onMatchEnd, rankBonus = 0, onExit
         <div className="text-amber-400">KILLS {stats.kills}</div>
       </div>
 
-      {/* Joystick */}
+      {/* LEFT JOYSTICK – Movement (full 360°) */}
       <div
-        className="absolute bottom-8 left-5 w-32 h-32 rounded-full border-2 border-white/30 bg-black/50 flex items-center justify-center z-30"
+        className="absolute bottom-10 left-5 w-36 h-36 rounded-full border-2 border-white/40 bg-black/60 flex items-center justify-center z-30"
         onPointerDown={(e) => {
-          isUIActive.current = true;
           e.currentTarget.setPointerCapture(e.pointerId);
-          const rect = e.currentTarget.getBoundingClientRect();
-          const cx = rect.left + rect.width / 2;
-          const cy = rect.top + rect.height / 2;
-          moveInput.current = {
-            x: Math.max(-1, Math.min(1, (e.clientX - cx) / (rect.width / 2))),
-            z: Math.max(-1, Math.min(1, (e.clientY - cy) / (rect.height / 2))),
-          };
+          handleJoystick(e, moveInput, false);
         }}
         onPointerMove={(e) => {
-          if (!e.currentTarget.hasPointerCapture(e.pointerId)) return;
-          const rect = e.currentTarget.getBoundingClientRect();
-          const cx = rect.left + rect.width / 2;
-          const cy = rect.top + rect.height / 2;
-          moveInput.current = {
-            x: Math.max(-1, Math.min(1, (e.clientX - cx) / (rect.width / 2))),
-            z: Math.max(-1, Math.min(1, (e.clientY - cy) / (rect.height / 2))),
-          };
+          if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+            handleJoystick(e, moveInput, false);
+          }
         }}
         onPointerUp={(e) => {
-          isUIActive.current = false;
           e.currentTarget.releasePointerCapture(e.pointerId);
           moveInput.current = { x: 0, z: 0 };
         }}
       >
-        <div className="w-14 h-14 rounded-full bg-white/25" />
+        <div className="w-16 h-16 rounded-full bg-white/30 shadow-inner" />
+        <div className="absolute -top-6 text-[10px] text-white/50 font-bold">MOVE</div>
       </div>
 
-      {/* FIRE button */}
+      {/* RIGHT JOYSTICK – Look */}
+      <div
+        className="absolute bottom-10 right-5 w-36 h-36 rounded-full border-2 border-white/40 bg-black/60 flex items-center justify-center z-30"
+        onPointerDown={(e) => {
+          e.currentTarget.setPointerCapture(e.pointerId);
+          handleJoystick(e, lookInput, true);
+        }}
+        onPointerMove={(e) => {
+          if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+            handleJoystick(e, lookInput, true);
+          }
+        }}
+        onPointerUp={(e) => {
+          e.currentTarget.releasePointerCapture(e.pointerId);
+          lookInput.current = { x: 0, y: 0 };
+        }}
+      >
+        <div className="w-16 h-16 rounded-full bg-white/30 shadow-inner" />
+        <div className="absolute -top-6 text-[10px] text-white/50 font-bold">LOOK</div>
+      </div>
+
+      {/* FIRE button – centered between the two sticks or slightly above */}
       <button
-        className="absolute bottom-8 right-6 w-28 h-28 rounded-full bg-red-600 border-4 border-red-400 text-white font-black text-xl z-30 active:scale-95"
+        className="absolute bottom-28 left-1/2 -translate-x-1/2 w-20 h-20 rounded-full bg-red-600 border-4 border-red-400 text-white font-black text-sm z-40 active:scale-90 shadow-xl"
         onPointerDown={(e) => {
           e.preventDefault();
-          e.stopPropagation();
-          isUIActive.current = true;
           setIsFiring(true);
         }}
-        onPointerUp={() => {
-          isUIActive.current = false;
-          setIsFiring(false);
-        }}
-        onPointerLeave={() => {
-          isUIActive.current = false;
-          setIsFiring(false);
-        }}
-        onPointerCancel={() => {
-          isUIActive.current = false;
-          setIsFiring(false);
-        }}
+        onPointerUp={() => setIsFiring(false)}
+        onPointerLeave={() => setIsFiring(false)}
+        onPointerCancel={() => setIsFiring(false)}
       >
         FIRE
       </button>
