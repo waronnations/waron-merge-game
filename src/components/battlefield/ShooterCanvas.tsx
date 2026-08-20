@@ -31,27 +31,9 @@ interface Props {
   onExit: () => void;
 }
 
-const MOVE_DEADZONE = 0.12;
-const LOOK_DEADZONE = 0.08;
-const LOOK_SENS_X = 2.6;
-const LOOK_SENS_Y = 2.1;
-const FIRE_BTN_SIZE = 92;
-
-// ─── Lightweight smoke particle ─────────────────────────────────────────────
-type SmokePuff = {
-  id: number;
-  pos: THREE.Vector3;
-  vel: THREE.Vector3;
-  life: number;
-  maxLife: number;
-  scale: number;
-};
-
-type ImpactSpark = {
-  id: number;
-  pos: THREE.Vector3;
-  life: number;
-};
+const MOVE_DEADZONE = 0.14;
+const LOOK_SENS = 0.0028; // px → radians (touch drag look)
+const CENTER_FIRE_SIZE = 64; // small explicit fire button
 
 function Ground() {
   return (
@@ -117,8 +99,8 @@ function MapCover() {
 function GunModel({ recoil }: { recoil: number }) {
   return (
     <group
-      position={[0.33, -0.29 - recoil * 0.16, -0.55]}
-      rotation={[0.12 + recoil * 2.1, 0.14, recoil * 0.4]}
+      position={[0.33, -0.29 - recoil * 0.1, -0.55]}
+      rotation={[0.1 + recoil * 0.9, 0.14, recoil * 0.2]}
     >
       <mesh>
         <boxGeometry args={[0.085, 0.14, 0.48]} />
@@ -128,74 +110,23 @@ function GunModel({ recoil }: { recoil: number }) {
         <boxGeometry args={[0.04, 0.04, 0.28]} />
         <meshStandardMaterial color="#050505" metalness={0.95} />
       </mesh>
-      <mesh position={[0, 0.09, -0.05]}>
-        <boxGeometry args={[0.02, 0.03, 0.08]} />
-        <meshStandardMaterial color="#222" />
-      </mesh>
     </group>
   );
 }
 
-/** Real flame + core glow at the muzzle */
 function MuzzleFlame({ active }: { active: boolean }) {
   if (!active) return null;
   return (
     <group position={[0.33, -0.22, -0.9]}>
-      <pointLight intensity={28} distance={10} color="#ffaa33" decay={2} />
-      {/* Core */}
+      <pointLight intensity={20} distance={8} color="#ffaa33" decay={2} />
       <mesh>
-        <sphereGeometry args={[0.07, 8, 8]} />
-        <meshBasicMaterial color="#fff5cc" transparent opacity={0.95} />
+        <sphereGeometry args={[0.06, 8, 8]} />
+        <meshBasicMaterial color="#fff5cc" transparent opacity={0.9} />
       </mesh>
-      {/* Outer flame */}
-      <mesh position={[0, 0, -0.06]} scale={[1.4, 1.1, 1.8]}>
-        <sphereGeometry args={[0.09, 6, 6]} />
-        <meshBasicMaterial color="#ff6600" transparent opacity={0.75} />
-      </mesh>
-      <mesh position={[0, 0, -0.12]} scale={[0.9, 0.7, 1.4]}>
+      <mesh position={[0, 0, -0.05]} scale={[1.3, 1, 1.5]}>
         <sphereGeometry args={[0.08, 6, 6]} />
-        <meshBasicMaterial color="#ff3300" transparent opacity={0.55} />
+        <meshBasicMaterial color="#ff6600" transparent opacity={0.65} />
       </mesh>
-    </group>
-  );
-}
-
-function SmokeSystem({ puffs }: { puffs: SmokePuff[] }) {
-  return (
-    <group>
-      {puffs.map((p) => {
-        const t = 1 - p.life / p.maxLife;
-        const opacity = Math.max(0, 0.45 * (1 - t));
-        const s = p.scale * (0.6 + t * 1.4);
-        return (
-          <mesh key={p.id} position={p.pos} scale={[s, s, s]}>
-            <sphereGeometry args={[0.15, 6, 6]} />
-            <meshBasicMaterial
-              color="#888888"
-              transparent
-              opacity={opacity}
-              depthWrite={false}
-            />
-          </mesh>
-        );
-      })}
-    </group>
-  );
-}
-
-function ImpactSparks({ sparks }: { sparks: ImpactSpark[] }) {
-  return (
-    <group>
-      {sparks.map((s) => (
-        <mesh key={s.id} position={s.pos}>
-          <sphereGeometry args={[0.08, 6, 6]} />
-          <meshBasicMaterial
-            color="#ffcc66"
-            transparent
-            opacity={Math.max(0, s.life * 4)}
-          />
-        </mesh>
-      ))}
     </group>
   );
 }
@@ -247,20 +178,16 @@ function GameLogic(props: any) {
     setEnemies,
     onMatchEnd,
     moveInput,
-    lookInput,
-    isFiring,
+    lookDelta,
+    fireRequest,
+    setFireRequest,
     setMuzzle,
     setRecoil,
     hitFlashes,
     setHitFlashes,
     invulnerableUntil,
     setHitMarker,
-    smokePuffs,
-    setSmokePuffs,
-    impactSparks,
-    setImpactSparks,
     sounds,
-    screenPunch,
   } = props;
 
   const { camera, scene, raycaster } = useThree();
@@ -269,9 +196,6 @@ function GameLogic(props: any) {
   const keys = useRef({ w: false, a: false, s: false, d: false, r: false });
   const recoilOffset = useRef(0);
   const isReloading = useRef(false);
-  const smokeId = useRef(0);
-  const sparkId = useRef(0);
-  const punch = useRef(0);
 
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
@@ -296,37 +220,6 @@ function GameLogic(props: any) {
     };
   }, []);
 
-  const spawnSmoke = useCallback(
-    (origin: THREE.Vector3) => {
-      const puffs: SmokePuff[] = [];
-      for (let i = 0; i < 4; i++) {
-        smokeId.current += 1;
-        puffs.push({
-          id: smokeId.current,
-          pos: origin
-            .clone()
-            .add(
-              new THREE.Vector3(
-                (Math.random() - 0.5) * 0.12,
-                (Math.random() - 0.5) * 0.08,
-                (Math.random() - 0.5) * 0.12
-              )
-            ),
-          vel: new THREE.Vector3(
-            (Math.random() - 0.5) * 0.4,
-            0.5 + Math.random() * 0.6,
-            (Math.random() - 0.5) * 0.4
-          ),
-          life: 0.55 + Math.random() * 0.35,
-          maxLife: 0.55 + Math.random() * 0.35,
-          scale: 0.7 + Math.random() * 0.6,
-        });
-      }
-      setSmokePuffs((prev: SmokePuff[]) => [...prev.slice(-18), ...puffs]);
-    },
-    [setSmokePuffs]
-  );
-
   const doReload = useCallback(() => {
     if (isReloading.current || stats.ammo >= stats.maxAmmo) return;
     isReloading.current = true;
@@ -337,6 +230,7 @@ function GameLogic(props: any) {
     }, 1400);
   }, [stats.ammo, stats.maxAmmo, setStats, sounds]);
 
+  /** Single explicit shot (tap fire) */
   const doShoot = useCallback(() => {
     const now = performance.now() / 1000;
     if (now - lastShot.current < FIRE_RATE) return;
@@ -351,8 +245,6 @@ function GameLogic(props: any) {
 
     lastShot.current = now;
     sounds.shot();
-    punch.current = 0.035;
-    screenPunch.current = 0.04;
 
     setStats((s: PlayerStats) => ({
       ...s,
@@ -360,16 +252,11 @@ function GameLogic(props: any) {
       damageDealt: s.damageDealt + DAMAGE,
     }));
 
-    recoilOffset.current += RECOIL_AMOUNT * 1.15;
+    // Mild recoil — mostly visual, almost no aim drop
+    recoilOffset.current = Math.min(0.35, recoilOffset.current + RECOIL_AMOUNT * 0.45);
     setRecoil(recoilOffset.current);
     setMuzzle(true);
-    setTimeout(() => setMuzzle(false), 55);
-
-    // Smoke from muzzle (camera-relative approx)
-    const muzzleWorld = new THREE.Vector3(0.33, -0.22, -0.9);
-    muzzleWorld.applyQuaternion(camera.quaternion);
-    muzzleWorld.add(camera.position);
-    spawnSmoke(muzzleWorld);
+    setTimeout(() => setMuzzle(false), 50);
 
     raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
     const hits = raycaster.intersectObjects(scene.children, true);
@@ -378,19 +265,13 @@ function GameLogic(props: any) {
       const id = hit.object.userData?.enemyId;
       if (id) {
         sounds.hit();
-        sparkId.current += 1;
-        setImpactSparks((prev: ImpactSpark[]) => [
-          ...prev.slice(-10),
-          { id: sparkId.current, pos: hit.point.clone(), life: 0.22 },
-        ]);
-
         setEnemies((prev: Enemy[]) =>
           prev.map((e) => {
             if (e.id === id && e.alive) {
               const hp = e.health - DAMAGE;
               setHitFlashes((f: any) => ({ ...f, [id]: Date.now() }));
               setHitMarker(true);
-              setTimeout(() => setHitMarker(false), 130);
+              setTimeout(() => setHitMarker(false), 120);
 
               if (hp <= 0) {
                 setStats((s: PlayerStats) => ({
@@ -420,62 +301,36 @@ function GameLogic(props: any) {
     setRecoil,
     setHitFlashes,
     setHitMarker,
-    setImpactSparks,
-    spawnSmoke,
     sounds,
-    screenPunch,
   ]);
 
   useFrame((_, delta) => {
-    if (isFiring) doShoot();
+    // Consume one fire request per frame max
+    if (fireRequest.current) {
+      fireRequest.current = false;
+      doShoot();
+    }
+
     if (keys.current.r) doReload();
 
-    // Look
-    const lx = lookInput.current.x;
-    const ly = lookInput.current.y;
-    if (Math.abs(lx) > LOOK_DEADZONE || Math.abs(ly) > LOOK_DEADZONE) {
+    // Look from touch drag (stable, no fire coupling)
+    const ldx = lookDelta.current.x;
+    const ldy = lookDelta.current.y;
+    if (ldx !== 0 || ldy !== 0) {
       euler.current.setFromQuaternion(camera.quaternion);
-      euler.current.y -= lx * LOOK_SENS_X * delta;
-      euler.current.x -= ly * LOOK_SENS_Y * delta;
-      // Screen punch from recoil
-      euler.current.x -= punch.current * 0.8;
-      punch.current = Math.max(0, punch.current - delta * 0.25);
-      euler.current.x = THREE.MathUtils.clamp(euler.current.x, -1.25, 1.25);
+      euler.current.y -= ldx;
+      euler.current.x -= ldy;
+      euler.current.x = THREE.MathUtils.clamp(euler.current.x, -1.2, 1.2);
       camera.quaternion.setFromEuler(euler.current);
-    } else if (punch.current > 0) {
-      euler.current.setFromQuaternion(camera.quaternion);
-      euler.current.x -= punch.current * 0.8;
-      punch.current = Math.max(0, punch.current - delta * 0.25);
-      camera.quaternion.setFromEuler(euler.current);
+      lookDelta.current = { x: 0, y: 0 };
     }
 
     if (recoilOffset.current > 0) {
-      recoilOffset.current = Math.max(
-        0,
-        recoilOffset.current - delta * RECOIL_RECOVERY
-      );
+      recoilOffset.current = Math.max(0, recoilOffset.current - delta * RECOIL_RECOVERY * 1.4);
       setRecoil(recoilOffset.current);
     }
 
-    // Smoke update
-    setSmokePuffs((prev: SmokePuff[]) =>
-      prev
-        .map((p) => ({
-          ...p,
-          pos: p.pos.clone().add(p.vel.clone().multiplyScalar(delta)),
-          life: p.life - delta,
-          vel: p.vel.clone().add(new THREE.Vector3(0, 0.15 * delta, 0)),
-        }))
-        .filter((p) => p.life > 0)
-    );
-
-    setImpactSparks((prev: ImpactSpark[]) =>
-      prev
-        .map((s) => ({ ...s, life: s.life - delta }))
-        .filter((s) => s.life > 0)
-    );
-
-    // Movement
+    // Move
     const forward = new THREE.Vector3();
     camera.getWorldDirection(forward);
     forward.y = 0;
@@ -495,10 +350,8 @@ function GameLogic(props: any) {
       const len = Math.hypot(mx, mz) || 1;
       mx /= len;
       mz /= len;
-      camera.position.x +=
-        (forward.x * -mz + right.x * mx) * PLAYER_SPEED * delta;
-      camera.position.z +=
-        (forward.z * -mz + right.z * mx) * PLAYER_SPEED * delta;
+      camera.position.x += (forward.x * -mz + right.x * mx) * PLAYER_SPEED * delta;
+      camera.position.z += (forward.z * -mz + right.z * mx) * PLAYER_SPEED * delta;
     }
 
     camera.position.y = PLAYER_HEIGHT;
@@ -513,29 +366,29 @@ function GameLogic(props: any) {
       ARENA_SIZE - 2.5
     );
 
-    // Enemies
+    // Enemies — staggered, slower, fairer
     const now = performance.now() / 1000;
     const invuln = now < invulnerableUntil.current;
 
     setEnemies((prev: Enemy[]) =>
-      prev.map((e) => {
+      prev.map((e, idx) => {
         if (!e.alive) return e;
+
         const dx = camera.position.x - e.position[0];
         const dz = camera.position.z - e.position[2];
         const dist = Math.hypot(dx, dz) || 1;
         let pos = e.position;
 
-        if (dist > 5.5) {
-          const speed = ENEMY_SPEED * delta;
-          const angle =
-            Math.atan2(dz, dx) + Math.sin(now * 1.4 + e.id.length) * 0.35;
+        if (dist > 6) {
+          const speed = ENEMY_SPEED * 0.85 * delta;
+          const angle = Math.atan2(dz, dx) + Math.sin(now + idx) * 0.25;
           pos = [
             e.position[0] + Math.cos(angle) * speed,
             e.position[1],
             e.position[2] + Math.sin(angle) * speed,
           ] as [number, number, number];
-        } else if (dist < 3.8) {
-          const speed = ENEMY_SPEED * 0.7 * delta;
+        } else if (dist < 4) {
+          const speed = ENEMY_SPEED * 0.5 * delta;
           pos = [
             e.position[0] - (dx / dist) * speed,
             e.position[1],
@@ -544,21 +397,24 @@ function GameLogic(props: any) {
         }
 
         let last = e.lastShot;
+        // Longer interval + low chance + per-enemy offset → no synchronized death burst
+        const personalRate = ENEMY_FIRE_RATE * 1.6 + idx * 0.35;
         if (
           !invuln &&
-          dist < ENEMY_RANGE &&
-          now - e.lastShot > ENEMY_FIRE_RATE &&
-          Math.random() < 0.28
+          dist < ENEMY_RANGE * 0.9 &&
+          now - e.lastShot > personalRate &&
+          Math.random() < 0.12
         ) {
           last = now;
           sounds.playerHit();
-          screenPunch.current = 0.07;
           setStats((s: PlayerStats) => {
-            const hp = Math.max(0, s.health - ENEMY_DAMAGE);
+            // Softer damage so you can actually fight back
+            const dmg = Math.max(4, Math.floor(ENEMY_DAMAGE * 0.55));
+            const hp = Math.max(0, s.health - dmg);
             if (hp <= 0) {
               setTimeout(() => {
                 onMatchEnd({ ...s, health: 0, survived: false });
-              }, 280);
+              }, 300);
             }
             return { ...s, health: hp };
           });
@@ -579,12 +435,7 @@ function GameLogic(props: any) {
       <color attach="background" args={["#0a0a12"]} />
       <fog attach="fog" args={["#0a0a12", 28, 68]} />
       <ambientLight intensity={0.34} />
-      <directionalLight
-        position={[16, 26, 10]}
-        intensity={1.45}
-        castShadow
-        shadow-mapSize={[1024, 1024]}
-      />
+      <directionalLight position={[16, 26, 10]} intensity={1.4} castShadow />
       <Sky sunPosition={[80, 28, 50]} />
       <Physics gravity={[0, -30, 0]}>
         <Ground />
@@ -599,20 +450,16 @@ function GameLogic(props: any) {
           />
         ))}
       </Physics>
-      <SmokeSystem puffs={smokePuffs} />
-      <ImpactSparks sparks={impactSparks} />
     </>
   );
 }
 
 function VirtualStick({
   label,
-  accent,
   onChange,
-  size = 144,
+  size = 132,
 }: {
   label: string;
-  accent: string;
   onChange: (x: number, y: number) => void;
   size?: number;
 }) {
@@ -641,10 +488,11 @@ function VirtualStick({
         {label}
       </span>
       <div
-        className="relative rounded-full border-2 bg-black/55 touch-none select-none"
-        style={{ width: size, height: size, borderColor: accent }}
+        className="relative rounded-full border-2 border-white/30 bg-black/55 touch-none select-none"
+        style={{ width: size, height: size }}
         onPointerDown={(e) => {
           e.preventDefault();
+          e.stopPropagation();
           e.currentTarget.setPointerCapture(e.pointerId);
           active.current = true;
           handle(e.clientX, e.clientY, e.currentTarget);
@@ -668,8 +516,8 @@ function VirtualStick({
         <div
           className="absolute left-1/2 top-1/2 rounded-full bg-white/30"
           style={{
-            width: size * 0.42,
-            height: size * 0.42,
+            width: size * 0.4,
+            height: size * 0.4,
             transform: `translate(calc(-50% + ${knob.x}px), calc(-50% + ${knob.y}px))`,
             transition: active.current ? "none" : "transform 0.12s ease-out",
           }}
@@ -701,7 +549,7 @@ export function ShooterCanvas({
     const now = performance.now() / 1000;
     return Array.from({ length: ENEMY_COUNT }, (_, i) => {
       const angle = (i / ENEMY_COUNT) * Math.PI * 2;
-      const r = 15 + Math.random() * 10;
+      const r = 16 + Math.random() * 10;
       return {
         id: `e-${i}`,
         position: [
@@ -713,41 +561,71 @@ export function ShooterCanvas({
         maxHealth: ENEMY_HEALTH,
         faction: (playerFaction === "wardog" ? "warcat" : "wardog") as Faction,
         alive: true,
-        lastShot: now + 3.2 + Math.random() * 2.8,
+        // Stagger first possible shot so they never open fire together
+        lastShot: now + 4 + i * 1.1 + Math.random() * 2,
       };
     });
   });
 
   const moveInput = useRef({ x: 0, z: 0 });
-  const lookInput = useRef({ x: 0, y: 0 });
-  const screenPunch = useRef(0);
-  const [isFiring, setIsFiring] = useState(false);
+  const lookDelta = useRef({ x: 0, y: 0 });
+  const fireRequest = useRef(false);
+  const lookDragging = useRef(false);
+  const lastLook = useRef({ x: 0, y: 0 });
+
   const [muzzle, setMuzzle] = useState(false);
   const [recoil, setRecoil] = useState(0);
   const [hitFlashes, setHitFlashes] = useState<Record<string, number>>({});
   const [hitMarker, setHitMarker] = useState(false);
-  const [smokePuffs, setSmokePuffs] = useState<SmokePuff[]>([]);
-  const [impactSparks, setImpactSparks] = useState<ImpactSpark[]>([]);
-  const [damageFlash, setDamageFlash] = useState(false);
-  const invulnerableUntil = useRef(performance.now() / 1000 + 3.8);
+  const [firePulse, setFirePulse] = useState(false);
+  const invulnerableUntil = useRef(performance.now() / 1000 + 4.5);
   const [ready, setReady] = useState(false);
-  const prevHealth = useRef(stats.health);
 
   useEffect(() => {
-    const t = setTimeout(() => setReady(true), 60);
+    const t = setTimeout(() => setReady(true), 50);
     return () => clearTimeout(t);
   }, []);
 
-  // Damage screen flash
-  useEffect(() => {
-    if (stats.health < prevHealth.current) {
-      setDamageFlash(true);
-      const t = setTimeout(() => setDamageFlash(false), 180);
-      prevHealth.current = stats.health;
-      return () => clearTimeout(t);
+  /** Right-side / free area look — does NOT shoot */
+  const onLookDown = (e: React.PointerEvent) => {
+    // Ignore if touching the center fire button or left stick area
+    const target = e.target as HTMLElement;
+    if (target.closest("[data-fire-btn]") || target.closest("[data-move-stick]")) {
+      return;
     }
-    prevHealth.current = stats.health;
-  }, [stats.health]);
+    e.preventDefault();
+    lookDragging.current = true;
+    lastLook.current = { x: e.clientX, y: e.clientY };
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  };
+
+  const onLookMove = (e: React.PointerEvent) => {
+    if (!lookDragging.current) return;
+    const dx = e.clientX - lastLook.current.x;
+    const dy = e.clientY - lastLook.current.y;
+    lastLook.current = { x: e.clientX, y: e.clientY };
+    lookDelta.current.x += dx * LOOK_SENS;
+    lookDelta.current.y += dy * LOOK_SENS;
+  };
+
+  const onLookUp = (e: React.PointerEvent) => {
+    lookDragging.current = false;
+    try {
+      (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+    } catch {
+      /* ignore */
+    }
+  };
+
+  /** Explicit TAP on center button = one shot */
+  const onFireTap = (e: React.PointerEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    sounds.unlock();
+    fireRequest.current = true;
+    setFirePulse(true);
+    setTimeout(() => setFirePulse(false), 100);
+  };
 
   if (!ready) {
     return (
@@ -769,14 +647,9 @@ export function ShooterCanvas({
         key="battlefield-canvas"
         shadows
         camera={{ position: [0, PLAYER_HEIGHT, 8], fov: 72 }}
-        gl={{
-          antialias: true,
-          powerPreference: "high-performance",
-          alpha: false,
-        }}
+        gl={{ antialias: true, powerPreference: "high-performance", alpha: false }}
         onCreated={({ gl }) => {
           gl.setClearColor("#0a0a12");
-          gl.shadowMap.type = THREE.PCFShadowMap;
         }}
       >
         <GameLogic
@@ -786,41 +659,57 @@ export function ShooterCanvas({
           setEnemies={setEnemies}
           onMatchEnd={onMatchEnd}
           moveInput={moveInput}
-          lookInput={lookInput}
-          isFiring={isFiring}
+          lookDelta={lookDelta}
+          fireRequest={fireRequest}
+          setFireRequest={() => {}}
           setMuzzle={setMuzzle}
           setRecoil={setRecoil}
           hitFlashes={hitFlashes}
           setHitFlashes={setHitFlashes}
           invulnerableUntil={invulnerableUntil}
           setHitMarker={setHitMarker}
-          smokePuffs={smokePuffs}
-          setSmokePuffs={setSmokePuffs}
-          impactSparks={impactSparks}
-          setImpactSparks={setImpactSparks}
           sounds={sounds}
-          screenPunch={screenPunch}
         />
         <MuzzleFlame active={muzzle} />
       </Canvas>
 
-      {/* Damage vignette */}
-      {damageFlash && (
-        <div className="absolute inset-0 pointer-events-none z-[15] bg-red-600/25" />
-      )}
+      {/* Full-screen look layer (behind controls) */}
+      <div
+        className="absolute inset-0 z-[5]"
+        onPointerDown={onLookDown}
+        onPointerMove={onLookMove}
+        onPointerUp={onLookUp}
+        onPointerCancel={onLookUp}
+      />
 
       {/* Crosshair */}
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none z-10">
         <div
-          className={`w-7 h-7 border-2 rounded-full transition-all duration-75 ${
+          className={`w-6 h-6 border-2 rounded-full transition-all duration-75 ${
             hitMarker ? "border-red-400 scale-125" : "border-white/90"
           }`}
         />
-        <div className="absolute inset-0 m-auto w-1.5 h-1.5 bg-white rounded-full" />
+        <div className="absolute inset-0 m-auto w-1 h-1 bg-white rounded-full" />
       </div>
 
+      {/* Small CENTER fire button — explicit tap only */}
+      <button
+        type="button"
+        data-fire-btn
+        className={`absolute top-1/2 left-1/2 z-20 -translate-x-1/2 translate-y-10 rounded-full font-black text-white text-[11px] shadow-lg select-none touch-none transition ${
+          firePulse
+            ? "bg-red-400 scale-110 ring-4 ring-red-300/40"
+            : "bg-red-600/85"
+        }`}
+        style={{ width: CENTER_FIRE_SIZE, height: CENTER_FIRE_SIZE }}
+        onPointerDown={onFireTap}
+        onContextMenu={(e) => e.preventDefault()}
+      >
+        FIRE
+      </button>
+
       {/* Top bar */}
-      <div className="absolute top-3 left-0 right-0 flex justify-between items-center px-4 z-20">
+      <div className="absolute top-3 left-0 right-0 flex justify-between items-center px-4 z-30">
         <div className="bg-black/70 px-3 py-1.5 rounded-full text-xs font-black text-white">
           {playerFaction.toUpperCase()}
         </div>
@@ -833,84 +722,46 @@ export function ShooterCanvas({
       </div>
 
       {/* HUD */}
-      <div className="absolute bottom-48 left-4 bg-black/80 px-4 py-3 rounded-2xl text-white font-mono text-sm space-y-1 pointer-events-none z-10">
+      <div className="absolute bottom-44 left-4 bg-black/80 px-4 py-3 rounded-2xl text-white font-mono text-sm space-y-1 pointer-events-none z-20">
         <div
           className={
-            stats.health < 30
-              ? "text-red-400 font-bold"
-              : "text-emerald-400 font-bold"
+            stats.health < 30 ? "text-red-400 font-bold" : "text-emerald-400 font-bold"
           }
         >
           HP {Math.round(stats.health)}/{stats.maxHealth}
         </div>
-        <div>AMMO {stats.ammo}/{stats.maxAmmo}</div>
+        <div>
+          AMMO {stats.ammo}/{stats.maxAmmo}
+        </div>
         <div className="text-amber-400">KILLS {stats.kills}</div>
       </div>
 
-      {/* LEFT — MOVE */}
-      <div className="absolute bottom-6 left-3 z-30">
+      {/* LEFT — MOVE only */}
+      <div className="absolute bottom-6 left-3 z-30" data-move-stick>
         <VirtualStick
           label="Move"
-          accent="rgba(255,255,255,0.35)"
-          size={140}
+          size={132}
           onChange={(x, y) => {
             moveInput.current = { x, z: y };
           }}
         />
       </div>
 
-      {/* RIGHT — LOOK only */}
-      <div className="absolute bottom-6 right-3 z-30">
-        <VirtualStick
-          label="Look"
-          accent="rgba(255,255,255,0.35)"
-          size={140}
-          onChange={(x, y) => {
-            lookInput.current = { x, y };
-          }}
-        />
-      </div>
-
-      {/* FIRE + RELOAD */}
-      <div className="absolute bottom-36 right-6 z-30 flex flex-col items-center gap-3">
-        <button
-          type="button"
-          className={`rounded-full font-black text-white text-sm shadow-lg active:scale-95 transition select-none touch-none ${
-            isFiring
-              ? "bg-red-500 scale-105 ring-4 ring-red-400/50"
-              : "bg-red-600/90"
-          }`}
-          style={{ width: FIRE_BTN_SIZE, height: FIRE_BTN_SIZE }}
-          onPointerDown={(e) => {
-            e.preventDefault();
-            sounds.unlock();
-            e.currentTarget.setPointerCapture(e.pointerId);
-            setIsFiring(true);
-          }}
-          onPointerUp={(e) => {
-            e.currentTarget.releasePointerCapture(e.pointerId);
-            setIsFiring(false);
-          }}
-          onPointerCancel={() => setIsFiring(false)}
-          onContextMenu={(e) => e.preventDefault()}
-        >
-          FIRE
-        </button>
-
-        <button
-          type="button"
-          className="rounded-full bg-zinc-800/90 border border-zinc-600 text-white text-[10px] font-black px-4 py-2 active:scale-95 select-none"
-          onPointerDown={() => {
-            sounds.unlock();
-            window.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyR" }));
-            setTimeout(() => {
-              window.dispatchEvent(new KeyboardEvent("keyup", { code: "KeyR" }));
-            }, 40);
-          }}
-        >
-          RELOAD
-        </button>
-      </div>
+      {/* Reload */}
+      <button
+        type="button"
+        className="absolute bottom-8 right-4 z-30 rounded-full bg-zinc-800/90 border border-zinc-600 text-white text-[10px] font-black px-4 py-2 active:scale-95 select-none"
+        onPointerDown={(e) => {
+          e.stopPropagation();
+          sounds.unlock();
+          window.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyR" }));
+          setTimeout(() => {
+            window.dispatchEvent(new KeyboardEvent("keyup", { code: "KeyR" }));
+          }, 40);
+        }}
+      >
+        RELOAD
+      </button>
     </div>
   );
 }
