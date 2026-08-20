@@ -289,7 +289,14 @@ function WaronMergePage() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -6 }}
             >
-              <BattlefieldTab state={game.state} />
+              {/* ── ONLY CHANGE: pass onRewardClaimed so TopBar updates after battle ── */}
+              <BattlefieldTab
+                state={game.state}
+                onRewardClaimed={async () => {
+                  await forceSync();
+                  await pullFromServer();
+                }}
+              />
             </motion.div>
           )}
 

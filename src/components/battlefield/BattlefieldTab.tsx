@@ -1,24 +1,58 @@
+// src/components/battlefield/BattlefieldTab.tsx
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { ShooterCanvas } from "./ShooterCanvas";
-import type { Faction, PlayerStats } from "./types";
+import type { Faction, PlayerStats, BattleRewardResult } from "./types";
 import type { GameState } from "@/lib/game/types";
+import { claimBattleReward } from "@/lib/battle/claimBattleReward.server";
 
 interface Props {
   state: GameState;
+  /** Call this after a successful reward so the parent refreshes GameState (TopBar will update) */
+  onRewardClaimed?: () => void | Promise<void>;
 }
 
-export function BattlefieldTab({ state }: Props) {
+export function BattlefieldTab({ state, onRewardClaimed }: Props) {
   const [inMatch, setInMatch] = useState(false);
   const [lastResult, setLastResult] = useState<PlayerStats | null>(null);
+  const [lastReward, setLastReward] = useState<BattleRewardResult | null>(null);
+  const [claiming, setClaiming] = useState(false);
 
   const playerFaction: Faction =
     (state.wardogTokens ?? 0) >= (state.warcatTokens ?? 0) ? "wardog" : "warcat";
   const rankBonus = Math.floor((state.highestTier ?? 1) / 2);
 
-  const handleMatchEnd = (stats: PlayerStats) => {
+  const handleMatchEnd = async (stats: PlayerStats) => {
     setLastResult(stats);
     setInMatch(false);
+    setClaiming(true);
+    setLastReward(null);
+
+    try {
+      const reward = await claimBattleReward({
+        data: {
+          kills: stats.kills,
+          deaths: stats.deaths,
+          damageDealt: stats.damageDealt ?? 0,
+          survived: stats.survived ?? false,
+          durationSec: 90, // you can track real duration later if you want
+          faction: playerFaction,
+          highestTier: state.highestTier ?? 1,
+        },
+      });
+
+      setLastReward(reward);
+
+      // This is the only thing that makes TopBar (and the rest of the UI) update
+      if (onRewardClaimed) {
+        await onRewardClaimed();
+      }
+    } catch (err) {
+      console.error("Battle reward claim failed", err);
+      setLastReward(null);
+    } finally {
+      setClaiming(false);
+    }
   };
 
   if (inMatch) {
@@ -60,12 +94,27 @@ export function BattlefieldTab({ state }: Props) {
         </div>
 
         {lastResult && (
-          <div className="text-sm">
-            <span className="text-emerald-400 font-semibold">
-              Last run: {lastResult.kills} kills
-            </span>
-            {lastResult.health <= 0 && (
-              <span className="text-red-400 ml-2">• You were eliminated</span>
+          <div className="text-sm space-y-1">
+            <div>
+              <span className="text-emerald-400 font-semibold">
+                Last run: {lastResult.kills} kills
+              </span>
+              {lastResult.health <= 0 && (
+                <span className="text-red-400 ml-2">• Eliminated</span>
+              )}
+              {lastResult.survived && (
+                <span className="text-amber-400 ml-2">• Victory</span>
+              )}
+            </div>
+
+            {claiming && (
+              <div className="text-xs text-zinc-500">Claiming rewards…</div>
+            )}
+
+            {lastReward && !claiming && (
+              <div className="text-xs text-zinc-300 mt-1 font-medium">
+                {lastReward.message}
+              </div>
             )}
           </div>
         )}

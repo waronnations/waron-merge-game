@@ -14,3 +14,12 @@ export const ENEMY_RANGE = 26;
 export const LOOK_SENSITIVITY = 0.0024;
 export const RECOIL_AMOUNT = 0.045;
 export const RECOIL_RECOVERY = 8;
+
+// Economy tuning (server will re-validate)
+export const REWARD_BASE_GLORY = 18;
+export const REWARD_KILL_GLORY = 9;
+export const REWARD_WIN_GLORY = 35;
+export const REWARD_BASE_TOKEN = 0.22;
+export const REWARD_KILL_TOKEN = 0.11;
+export const REWARD_WIN_TOKEN = 0.45;
+export const REWARD_ENERGY_PER_MIN = 3;
