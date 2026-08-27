@@ -14,6 +14,7 @@ import {
   createClaim,
   getClaims,
   markClaimTxSubmitted,
+  refundFailedClaim,
   type ClaimsSnapshot,
 } from "@/lib/claims.functions";
 import { TreasuryCard } from "@/components/TreasuryCard";
@@ -50,9 +51,6 @@ export function ClaimPanel({
   const [amountWardog, setAmountWardog] = useState("");
   const [amountWarcat, setAmountWarcat] = useState("");
 
-  // CRITICAL FIX: never overwrite ledger totals (state.wardogTokens / warcatTokens)
-  // with claimable amounts. Only sync the claimed counters so Shop can compute
-  // playable = total - claimed correctly.
   const pushBalanceSync = (snap: ClaimsSnapshot) => {
     if (!onBalanceSync) return;
     onBalanceSync({
@@ -63,6 +61,11 @@ export function ClaimPanel({
     });
   };
 
+  const applySnapshot = (snap: ClaimsSnapshot) => {
+    setSnapshot(snap);
+    pushBalanceSync(snap);
+  };
+
   useEffect(() => {
     if (!authenticated) return;
     let cancelled = false;
@@ -70,8 +73,7 @@ export function ClaimPanel({
       try {
         const snap = await getClaims();
         if (!cancelled && "claims" in snap) {
-          setSnapshot(snap);
-          pushBalanceSync(snap);
+          applySnapshot(snap);
         }
       } catch {
         /* offline */
@@ -110,6 +112,28 @@ export function ClaimPanel({
     return { ok: true as const, amount: n };
   };
 
+  const restoreAfterFailedTx = async (claimId: number) => {
+    try {
+      const refund = await refundFailedClaim({ data: { claimId } });
+      if (refund.ok && refund.snapshot) {
+        applySnapshot(refund.snapshot);
+        return true;
+      }
+      const snap = await getClaims();
+      if ("claims" in snap) applySnapshot(snap);
+      return Boolean(refund.ok);
+    } catch (e) {
+      console.error("[restoreAfterFailedTx]", e);
+      try {
+        const snap = await getClaims();
+        if ("claims" in snap) applySnapshot(snap);
+      } catch {
+        /* ignore */
+      }
+      return false;
+    }
+  };
+
   const submitClaim = async (token: TokenKey) => {
     if (!address) {
       toast.error("Connect your TON wallet first");
@@ -138,7 +162,8 @@ export function ClaimPanel({
         toast.error(
           {
             wallet_not_linked: "Connect your TON wallet first",
-            claim_already_pending: "A claim for this token is already queued",
+            claim_already_pending:
+              "A claim for this token is already queued — wait for it to expire or retry after refresh",
             below_minimum: `You need at least ${snapshot?.minAmount ?? 10} to request a claim`,
             balance_changed: "Balance changed — try again",
             database_unavailable: "Claim desk offline — try again shortly",
@@ -148,15 +173,18 @@ export function ClaimPanel({
             daily_cap_reached: "Daily claim cap reached for this token",
             amount_too_small_for_zone:
               "Claimable slice is under the minimum in the current treasury zone",
+            onchain_prepare_failed:
+              "Could not build the TON transaction — tokens were not taken",
           }[res.error] ??
             res.note ??
             "Claim request failed",
         );
+        const snap = await getClaims();
+        if ("claims" in snap) applySnapshot(snap);
         return;
       }
 
-      setSnapshot(res.snapshot);
-      pushBalanceSync(res.snapshot);
+      applySnapshot(res.snapshot);
       if (token === "wardog") setAmountWardog("");
       else setAmountWarcat("");
 
@@ -178,10 +206,19 @@ export function ClaimPanel({
 
         try {
           const result = await tonConnectUI.sendTransaction(tx);
+          if (!result) {
+            await restoreAfterFailedTx(res.claim.id);
+            haptic("heavy");
+            toast.error(
+              "Wallet did not return a signed transaction — tokens restored",
+            );
+            return;
+          }
+
           await markClaimTxSubmitted({
             data: {
               claimId: res.claim.id,
-              txHash: result?.boc ?? null,
+              txHash: result.boc ?? null,
             },
           });
           haptic("medium");
@@ -192,18 +229,19 @@ export function ClaimPanel({
             },
           );
           const snap = await getClaims();
-          if ("claims" in snap) {
-            setSnapshot(snap);
-            pushBalanceSync(snap);
-          }
+          if ("claims" in snap) applySnapshot(snap);
         } catch (txErr: unknown) {
+          await restoreAfterFailedTx(res.claim.id);
           haptic("heavy");
           const msg = String((txErr as { message?: string })?.message ?? "");
-          toast.error(
+          const cancelled =
             msg.toLowerCase().includes("cancel") ||
-              msg.toLowerCase().includes("reject")
-              ? "Transaction cancelled — balance stays locked; retry or contact support"
-              : "Wallet rejected the claim transaction",
+            msg.toLowerCase().includes("reject") ||
+            msg.toLowerCase().includes("user");
+          toast.error(
+            cancelled
+              ? "Transaction cancelled — tokens restored to Claimable"
+              : "Wallet did not sign — tokens restored to Claimable",
           );
         }
         return;
@@ -216,15 +254,18 @@ export function ClaimPanel({
     } catch (e) {
       console.error("[submitClaim]", e);
       toast.error("Claim request failed");
+      try {
+        const snap = await getClaims();
+        if ("claims" in snap) applySnapshot(snap);
+      } catch {
+        /* ignore */
+      }
     } finally {
       setBusy(null);
     }
   };
 
-  // Prefer live claimable from server snapshot. Fallback only while loading.
-  const balances = snapshot
-    ? snapshot.balances
-    : { wardog: 0, warcat: 0 };
+  const balances = snapshot ? snapshot.balances : { wardog: 0, warcat: 0 };
   const claimed = snapshot?.claimed ?? { wardog: 0, warcat: 0 };
   const total = snapshot?.total ?? {
     wardog: balances.wardog + claimed.wardog,
@@ -263,7 +304,7 @@ export function ClaimPanel({
         </p>
         <p className="mt-1 text-emerald-100/70">
           <strong className="text-emerald-200">Claimable</strong> = free rewards
-          from the merge board. Claim them here to the Claim Treasury.
+          from the merge board. Claim them here to your TON wallet.
           <br />
           <strong className="text-emerald-200">Topped-up</strong> = jettons you
           deposited. Required for shop, energy recover, nations & operations.
@@ -275,15 +316,16 @@ export function ClaimPanel({
         <div className="space-y-1 text-[0.7rem] leading-relaxed text-amber-100/90">
           <p className="font-bold uppercase tracking-wider text-amber-300">
             {onChainLive
-              ? "On-chain claims — current wallet only"
+              ? "On-chain claims — sign the wallet tx"
               : "Payouts are queued — not instant"}
           </p>
           <p className="text-amber-100/70">
             {onChainLive ? (
               <>
-                Choose how much to claim. Jettons go to the{" "}
+                Jettons go to the{" "}
                 <strong className="text-amber-200">currently connected</strong>{" "}
-                TON wallet. You pay ~{ONCHAIN_CLAIM_GAS_TON} TON gas.
+                TON wallet. You pay ~{ONCHAIN_CLAIM_GAS_TON} TON gas. If you do
+                not sign, tokens stay claimable.
               </>
             ) : (
               <>Claiming locks balance until batch payout is live.</>
@@ -326,13 +368,8 @@ export function ClaimPanel({
         )}
       </div>
 
-      <ClaimBalanceTiles
-        balances={balances}
-        claimed={claimed}
-        total={total}
-      />
+      <ClaimBalanceTiles balances={balances} claimed={claimed} total={total} />
 
-      {/* WARDOG claim */}
       <div className="space-y-3 rounded-2xl border border-zinc-700 bg-zinc-900/80 p-4">
         <div className="text-xs font-black uppercase tracking-widest text-amber-400">
           Claim {TOKENS.wardog.symbol} (merge rewards)
@@ -365,7 +402,6 @@ export function ClaimPanel({
         </button>
       </div>
 
-      {/* WARCAT claim */}
       <div className="space-y-3 rounded-2xl border border-zinc-700 bg-zinc-900/80 p-4">
         <div className="text-xs font-black uppercase tracking-widest text-sky-400">
           Claim {TOKENS.warcat.symbol} (merge rewards)
@@ -398,7 +434,20 @@ export function ClaimPanel({
         </button>
       </div>
 
-      <ClaimHistoryList claims={snapshot?.claims ?? []} />
+      <ClaimHistoryList
+        snapshot={snapshot}
+        onRefund={async (claimId) => {
+          setBusy("wardog");
+          try {
+            const ok = await restoreAfterFailedTx(claimId);
+            toast[ok ? "success" : "error"](
+              ok ? "Claim cancelled — tokens restored" : "Could not refund this claim",
+            );
+          } finally {
+            setBusy(null);
+          }
+        }}
+      />
     </div>
   );
 }

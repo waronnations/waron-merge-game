@@ -7,8 +7,10 @@ import type { ClaimsSnapshot } from "@/lib/claims.functions";
 
 export function ClaimHistoryList({
   snapshot,
+  onRefund,
 }: {
   snapshot: ClaimsSnapshot | null;
+  onRefund?: (claimId: number) => void;
 }) {
   return (
     <div className="rounded-2xl border border-zinc-800 bg-zinc-950/60 p-4">
@@ -42,14 +44,25 @@ export function ClaimHistoryList({
                   {new Date(c.createdAt).toLocaleString()}
                 </div>
               </div>
-              <span
-                className={cn(
-                  "rounded-md px-2 py-0.5 text-[0.6rem] font-bold uppercase",
-                  statusClass(c.status),
-                )}
-              >
-                {statusLabel(c.status)}
-              </span>
+              <div className="flex items-center gap-2">
+                {c.status === "pending" && onRefund ? (
+                  <button
+                    type="button"
+                    onClick={() => onRefund(c.id)}
+                    className="rounded-md px-2 py-0.5 text-[0.55rem] font-bold uppercase tracking-wider text-amber-300 hover:bg-amber-950/40"
+                  >
+                    Restore
+                  </button>
+                ) : null}
+                <span
+                  className={cn(
+                    "rounded-md px-2 py-0.5 text-[0.6rem] font-bold uppercase",
+                    statusClass(c.status),
+                  )}
+                >
+                  {statusLabel(c.status)}
+                </span>
+              </div>
             </li>
           ))}
         </ul>

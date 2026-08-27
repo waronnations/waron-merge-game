@@ -1,8 +1,8 @@
 /**
  * Server-only claim ledger + on-chain claim preparation.
  *
- * On-chain: locks playable balance, signs Claim for the *current*
- * TonConnect address (beneficiaryAddress), player pays gas.
+ * Lock is provisional. If the player never signs a TON tx, or the
+ * authorization expires, claimed_* is rolled back and the row is refunded.
  */
 
 import { z } from "zod";
@@ -21,18 +21,21 @@ import {
   signClaimAuthorization,
   toNanoTokens,
 } from "@/lib/onchain/claim-signer.server";
+import { normalizeToken } from "@/lib/tokens";
 
 export const MIN_CLAIM_AMOUNT = MIN_TREASURY_CLAIM;
 
+/** Soft TTL when deadline is missing (slightly longer than 10-min auth). */
+const STALE_PENDING_SECONDS = 12 * 60;
+
 export const ClaimRequestInput = z.object({
   token: z.enum(["wardog", "warcat"]),
-  /** Live TonConnect account — preferred payout target */
   beneficiaryAddress: z.string().min(10).optional(),
-  /**
-   * Optional amount to claim (human units, e.g. 50.5).
-   * Omitted / 0 / negative → claim max available (subject to zone rules).
-   */
   amount: z.number().positive().finite().optional(),
+});
+
+export const ClaimRefundInput = z.object({
+  claimId: z.number().int().positive(),
 });
 
 export interface ClaimRow {
@@ -66,7 +69,6 @@ function mapRow(r: Record<string, unknown>): ClaimRow {
   const status = r.status as ClaimRow["status"];
   const onchainStatus = (r.onchain_status as string | null) ?? null;
 
-  // Back-compat: older rows may be pending + submitted/confirmed
   const effectiveStatus: ClaimRow["status"] =
     status === "pending" &&
     (onchainStatus === "submitted" || onchainStatus === "confirmed")
@@ -105,9 +107,127 @@ function normalizeTonAddress(raw: string): string | null {
   }
 }
 
+/**
+ * Roll back claimed_* and mark the ledger refunded.
+ * Safe to call twice — second call is a no-op.
+ */
+export async function refundClaim(
+  userId: number,
+  claimId: number,
+  reason: string = "unsigned_or_failed",
+): Promise<{ ok: boolean; error?: string; snapshot?: ClaimsSnapshot }> {
+  const rowRes = await sql`
+    SELECT id, token, amount, status, onchain_status, tx_hash
+      FROM claims
+     WHERE id = ${claimId} AND user_id = ${userId}
+     LIMIT 1
+  `;
+  const row = rowRes.rows[0];
+  if (!row) return { ok: false, error: "not_found" };
+
+  const status = String(row.status);
+  const onchain = String(row.onchain_status ?? "");
+
+  if (status === "refunded") {
+    return { ok: true, snapshot: await loadClaimsSnapshot(userId, false) };
+  }
+
+  // Never unwind a payout that was accepted by the wallet / chain.
+  if (
+    status === "sent" ||
+    onchain === "submitted" ||
+    onchain === "confirmed"
+  ) {
+    return { ok: false, error: "already_submitted" };
+  }
+
+  if (status !== "pending" && status !== "failed") {
+    return { ok: false, error: "not_refundable" };
+  }
+
+  const token = row.token as "wardog" | "warcat";
+  const amount = normalizeToken(Number(row.amount));
+
+  const flipped = await sql`
+    UPDATE claims
+       SET status = 'refunded',
+           onchain_status = ${reason},
+           updated_at = NOW()
+     WHERE id = ${claimId}
+       AND user_id = ${userId}
+       AND status IN ('pending', 'failed')
+     RETURNING id
+  `;
+  if (flipped.rowCount === 0) {
+    return { ok: false, error: "not_refundable" };
+  }
+
+  if (token === "wardog") {
+    await sql`
+      UPDATE progress
+         SET claimed_wardog = GREATEST(
+               0,
+               COALESCE(claimed_wardog, 0) - ${amount}
+             ),
+             updated_at = NOW()
+       WHERE user_id = ${userId}
+    `;
+  } else {
+    await sql`
+      UPDATE progress
+         SET claimed_warcat = GREATEST(
+               0,
+               COALESCE(claimed_warcat, 0) - ${amount}
+             ),
+             updated_at = NOW()
+       WHERE user_id = ${userId}
+    `;
+  }
+
+  return { ok: true, snapshot: await loadClaimsSnapshot(userId, false) };
+}
+
+/**
+ * Refund pending claims whose on-chain window expired and no tx was sent.
+ */
+export async function expireStaleClaims(userId: number): Promise<number> {
+  const nowSec = Math.floor(Date.now() / 1000);
+  const stale = await sql`
+    SELECT id
+      FROM claims
+     WHERE user_id = ${userId}
+       AND status = 'pending'
+       AND COALESCE(onchain_status, '') NOT IN ('submitted', 'confirmed')
+       AND tx_hash IS NULL
+       AND (
+         (deadline IS NOT NULL AND deadline < ${nowSec})
+         OR (
+           deadline IS NULL
+           AND created_at < NOW() - (${STALE_PENDING_SECONDS} || ' seconds')::interval
+         )
+       )
+  `;
+
+  let n = 0;
+  for (const r of stale.rows) {
+    const res = await refundClaim(userId, Number(r.id), "expired_unsigned");
+    if (res.ok) n += 1;
+  }
+  return n;
+}
+
 export async function loadClaimsSnapshot(
   userId: number,
+  expire = true,
 ): Promise<ClaimsSnapshot> {
+  if (expire) {
+    try {
+      await expireStaleClaims(userId);
+    } catch (e) {
+      console.error("[loadClaimsSnapshot] expire failed", e);
+    }
+  }
+
   const user = await loadUser(userId);
   const prog = await sql`
     SELECT wardog_tokens, warcat_tokens,
@@ -134,7 +254,7 @@ export async function loadClaimsSnapshot(
     claims: await listClaims(userId),
     treasury: await getTreasuryHealth(),
     economyNote: isOnChainLive()
-      ? "Claim locks tokens in-game, then you sign a TON transaction to receive jettons on the wallet currently connected. You pay network gas (~0.25 TON)."
+      ? "Claim prepares a TON tx. If you do not sign it, tokens stay claimable."
       : "Playable tokens power the board and shop. Claiming locks them for payout.",
     onChainLive: isOnChainLive(),
     claimTreasuryAddress: CLAIM_TREASURY.address,
@@ -164,6 +284,8 @@ export async function requestClaim(
   beneficiaryAddress?: string,
   amount?: number,
 ): Promise<ClaimRequestResult> {
+  await expireStaleClaims(userId);
+
   const user = await loadUser(userId);
 
   const raw =
@@ -185,7 +307,19 @@ export async function requestClaim(
      WHERE id = ${userId}
   `;
 
-  // Pass optional amount — claimTokens clamps to available / zone / daily cap
+  const pending = await sql`
+    SELECT id FROM claims
+     WHERE user_id = ${userId} AND token = ${token} AND status = 'pending'
+     LIMIT 1
+  `;
+  if (pending.rowCount && pending.rowCount > 0) {
+    return {
+      ok: false,
+      error: "claim_already_pending",
+      note: "A claim for this token is already queued. Cancel it or wait for expiry.",
+    };
+  }
+
   const res = await claimTokens(userId, token, amount);
   if (!res.ok) {
     const note =
@@ -195,8 +329,9 @@ export async function requestClaim(
     return { ok: false, error: res.error ?? "claim_failed", note };
   }
 
-  const snapshot = await loadClaimsSnapshot(userId);
-  const claim = snapshot.claims[0];
+  const snapshot = await loadClaimsSnapshot(userId, false);
+  const claim = snapshot.claims.find((c) => c.status === "pending" && c.token === token)
+    ?? snapshot.claims[0];
   if (!claim) return { ok: false, error: "claim_failed" };
 
   await sql`
@@ -239,7 +374,7 @@ export async function requestClaim(
           deadline,
           onchainStatus: "prepared",
         },
-        snapshot: await loadClaimsSnapshot(userId),
+        snapshot: await loadClaimsSnapshot(userId, false),
         note: res.note,
         onChain: {
           token: tokenCode,
@@ -252,13 +387,11 @@ export async function requestClaim(
       };
     } catch (e) {
       console.error("[requestClaim] on-chain sign failed", e);
+      await refundClaim(userId, claim.id, "sign_failed");
       return {
-        ok: true,
-        claim,
-        snapshot: await loadClaimsSnapshot(userId),
-        note:
-          (res.note ?? "") +
-          " Locked on server, but on-chain signature failed — contact support.",
+        ok: false,
+        error: "onchain_prepare_failed",
+        note: "Could not prepare the on-chain claim. Tokens were not taken.",
       };
     }
   }
@@ -266,15 +399,11 @@ export async function requestClaim(
   return {
     ok: true,
     claim: { ...claim, walletAddress: beneficiary },
-    snapshot: await loadClaimsSnapshot(userId),
+    snapshot: await loadClaimsSnapshot(userId, false),
     note: res.note,
   };
 }
 
-/**
- * Wallet TX was accepted by TonConnect.
- * Mark ledger status sent so history shows "Sent" (not Queued).
- */
 export async function markClaimSubmitted(
   userId: number,
   claimId: number,
@@ -284,9 +413,17 @@ export async function markClaimSubmitted(
     UPDATE claims
        SET status = 'sent',
            onchain_status = 'submitted',
-           tx_hash = COALESCE(${txHash}, tx_hash)
+           tx_hash = COALESCE(${txHash}, tx_hash),
+           updated_at = NOW()
      WHERE id = ${claimId}
        AND user_id = ${userId}
        AND status IN ('pending', 'sent')
   `;
+}
+
+export async function markClaimFailed(
+  userId: number,
+  claimId: number,
+): Promise<{ ok: boolean; snapshot?: ClaimsSnapshot; error?: string }> {
+  return refundClaim(userId, claimId, "wallet_rejected");
 }

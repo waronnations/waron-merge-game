@@ -4,9 +4,11 @@ import { ensureSchema, hasDatabase } from "@/lib/db.server";
 import { requireUserId } from "@/lib/auth.server";
 import {
   ClaimRequestInput,
+  ClaimRefundInput,
   loadClaimsSnapshot,
   requestClaim,
   markClaimSubmitted,
+  markClaimFailed,
   type ClaimRequestResult,
   type ClaimsSnapshot,
 } from "@/lib/claims.server";
@@ -50,4 +52,12 @@ export const markClaimTxSubmitted = createServerFn({ method: "POST" })
       data.txHash ?? null,
     );
     return { ok: true as const };
+  });
+
+export const refundFailedClaim = createServerFn({ method: "POST" })
+  .validator((input: unknown) => ClaimRefundInput.parse(input))
+  .handler(async ({ data }) => {
+    if (!hasDatabase()) return { ok: false as const, error: "database_unavailable" };
+    await ensureSchema();
+    return markClaimFailed(await requireUserId(), data.claimId);
   });
