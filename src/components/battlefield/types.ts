@@ -1,5 +1,7 @@
 export type Faction = "wardog" | "warcat";
 
+export type BattleMode = "hunt" | "hold" | "waves";
+
 export interface PlayerStats {
   health: number;
   maxHealth: number;
@@ -8,7 +10,13 @@ export interface PlayerStats {
   kills: number;
   deaths: number;
   damageDealt: number;
-  survived: boolean; // true if player won (all enemies dead)
+  survived: boolean;
+  durationSec: number;
+  shotsFired: number;
+  hits: number;
+  headshots: number;
+  accuracy: number;
+  mode: BattleMode;
 }
 
 export interface Enemy {
@@ -27,4 +35,12 @@ export interface BattleRewardResult {
   warcat: number;
   energy: number;
   message: string;
+}
+
+export interface BattleLoadout {
+  fireRate: number;
+  damage: number;
+  spread: number;
+  mag: number;
+  name: string;
 }
