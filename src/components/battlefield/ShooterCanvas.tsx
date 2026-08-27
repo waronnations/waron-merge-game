@@ -36,6 +36,7 @@ interface Props {
 
 const MOVE_DEADZONE = 0.14;
 const LOOK_SENS = 0.0028;
+const CENTER_FIRE_SIZE = 64;
 
 type Tracer = {
   id: number;
@@ -43,6 +44,87 @@ type Tracer = {
   to: THREE.Vector3;
   born: number;
 };
+
+function VirtualStick({
+  label,
+  onChange,
+  size = 132,
+}: {
+  label: string;
+  onChange: (x: number, y: number) => void;
+  size?: number;
+}) {
+  const active = useRef(false);
+  const [knob, setKnob] = useState({ x: 0, y: 0 });
+
+  const handle = (clientX: number, clientY: number, el: HTMLElement) => {
+    const rect = el.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    const max = rect.width / 2 - 8;
+    let dx = clientX - cx;
+    let dy = clientY - cy;
+    const len = Math.hypot(dx, dy);
+    if (len > max) {
+      dx = (dx / len) * max;
+      dy = (dy / len) * max;
+    }
+    setKnob({ x: dx, y: dy });
+    onChange(dx / max, dy / max);
+  };
+
+  return (
+    <div className="relative flex flex-col items-center gap-1">
+      <span className="text-[10px] font-bold uppercase tracking-wider text-white/50">
+        {label}
+      </span>
+      <div
+        className="relative rounded-full border-2 border-white/30 bg-black/55 touch-none select-none"
+        style={{ width: size, height: size }}
+        onPointerDown={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          e.currentTarget.setPointerCapture(e.pointerId);
+          active.current = true;
+          handle(e.clientX, e.clientY, e.currentTarget);
+        }}
+        onPointerMove={(e) => {
+          if (!active.current) return;
+          e.preventDefault();
+          e.stopPropagation();
+          handle(e.clientX, e.clientY, e.currentTarget);
+        }}
+        onPointerUp={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          active.current = false;
+          try {
+            e.currentTarget.releasePointerCapture(e.pointerId);
+          } catch {
+            /* ignore */
+          }
+          setKnob({ x: 0, y: 0 });
+          onChange(0, 0);
+        }}
+        onPointerCancel={() => {
+          active.current = false;
+          setKnob({ x: 0, y: 0 });
+          onChange(0, 0);
+        }}
+      >
+        <div
+          className="absolute left-1/2 top-1/2 rounded-full bg-white/30"
+          style={{
+            width: size * 0.4,
+            height: size * 0.4,
+            transform: `translate(calc(-50% + ${knob.x}px), calc(-50% + ${knob.y}px))`,
+            transition: active.current ? "none" : "transform 0.12s ease-out",
+          }}
+        />
+      </div>
+    </div>
+  );
+}
 
 function Ground() {
   return (
@@ -80,7 +162,7 @@ function Walls() {
 function MapCover({ playerFaction }: { playerFaction: Faction }) {
   const pieces = useMemo(
     () => [
-      { pos: [0, 1.3, 0] as const, size: [4.5, 2.6, 4.5] as const, banner: true },
+      { pos: [0, 1.3, 0] as const, size: [4.5, 2.6, 4.5] as const },
       { pos: [-8, 1.1, -6] as const, size: [3.2, 2.2, 3.2] as const },
       { pos: [9, 1.1, 7] as const, size: [3.5, 2.3, 3] as const },
       { pos: [-12, 1.2, 10] as const, size: [2.8, 2.4, 5] as const },
@@ -97,8 +179,8 @@ function MapCover({ playerFaction }: { playerFaction: Faction }) {
     <group>
       {pieces.map((p, i) => (
         <RigidBody key={i} type="fixed" colliders="cuboid">
-          <mesh position={p.pos as unknown as [number, number, number]} castShadow>
-            <boxGeometry args={p.size as unknown as [number, number, number]} />
+          <mesh position={[...p.pos]} castShadow>
+            <boxGeometry args={[...p.size]} />
             <meshStandardMaterial color="#24201c" roughness={0.78} />
           </mesh>
         </RigidBody>
@@ -151,7 +233,7 @@ function TracerLines({ tracers }: { tracers: Tracer[] }) {
         const age = (now - t.born) / 180;
         if (age >= 1) return null;
         const dir = t.to.clone().sub(t.from);
-        const len = dir.length();
+        const len = Math.max(0.01, dir.length());
         const mid = t.from.clone().add(t.to).multiplyScalar(0.5);
         const quat = new THREE.Quaternion().setFromUnitVectors(
           new THREE.Vector3(0, 1, 0),
@@ -160,11 +242,7 @@ function TracerLines({ tracers }: { tracers: Tracer[] }) {
         return (
           <mesh key={t.id} position={mid} quaternion={quat}>
             <cylinderGeometry args={[0.012, 0.012, len, 4]} />
-            <meshBasicMaterial
-              color="#ffd27a"
-              transparent
-              opacity={1 - age}
-            />
+            <meshBasicMaterial color="#ffd27a" transparent opacity={1 - age} />
           </mesh>
         );
       })}
@@ -179,11 +257,11 @@ function EnemyBot({ enemy, hitFlash }: { enemy: Enemy; hitFlash: boolean }) {
   const hp = Math.max(0, enemy.health / enemy.maxHealth);
   return (
     <group position={enemy.position}>
-      <mesh castShadow userData={{ enemyId: enemy.id, part: "body" }}>
+      <mesh castShadow>
         <capsuleGeometry args={[0.42, 1.35]} />
         <meshStandardMaterial color={color} />
       </mesh>
-      <mesh position={[0, 1.15, 0]} castShadow userData={{ enemyId: enemy.id, part: "head" }}>
+      <mesh position={[0, 1.15, 0]} castShadow>
         <sphereGeometry args={[0.28, 12, 12]} />
         <meshStandardMaterial color={color} />
       </mesh>
@@ -198,23 +276,20 @@ function EnemyBot({ enemy, hitFlash }: { enemy: Enemy; hitFlash: boolean }) {
         {enemy.faction.toUpperCase()}
       </Text>
       <mesh position={[0, 2.28, 0]}>
-        <planeGeometry args={[1.1 * hp, 0.07]} />
+        <planeGeometry args={[Math.max(0.05, 1.1 * hp), 0.07]} />
         <meshBasicMaterial color="#ef4444" />
       </mesh>
     </group>
   );
 }
 
-function spawnWave(
-  n: number,
-  opposite: Faction,
-  wave: number,
-): Enemy[] {
+function spawnWave(n: number, opposite: Faction, wave: number): Enemy[] {
   const out: Enemy[] = [];
   for (let i = 0; i < n; i++) {
     const a = (i / n) * Math.PI * 2 + wave * 0.4;
     const r = 16 + (i % 3) * 4;
-    const fac: Faction = i % 3 === 0 ? opposite : opposite === "wardog" ? "warcat" : "wardog";
+    const fac: Faction =
+      i % 3 === 0 ? opposite : opposite === "wardog" ? "warcat" : "wardog";
     out.push({
       id: `w${wave}-${i}-${Math.random().toString(36).slice(2, 6)}`,
       position: [Math.cos(a) * r, 0.9, Math.sin(a) * r],
@@ -233,11 +308,17 @@ function GameLogic({
   rankBonus = 0,
   mode = "hunt",
   onMatchEnd,
+  moveInput,
+  lookDelta,
+  firing,
 }: {
   playerFaction: Faction;
   rankBonus?: number;
   mode: BattleMode;
   onMatchEnd: (stats: PlayerStats) => void;
+  moveInput: React.MutableRefObject<{ x: number; z: number }>;
+  lookDelta: React.MutableRefObject<{ x: number; y: number }>;
+  firing: React.MutableRefObject<boolean>;
 }) {
   const { camera } = useThree();
   const sounds = useBattleSounds();
@@ -270,11 +351,9 @@ function GameLogic({
   const [tracers, setTracers] = useState<Tracer[]>([]);
   const [wave, setWave] = useState(0);
   const [holdScore, setHoldScore] = useState(0);
+  const [hudLeft, setHudLeft] = useState(MATCH_SECONDS);
 
   const keys = useRef<Record<string, boolean>>({});
-  const moveInput = useRef({ x: 0, y: 0 });
-  const lookDelta = useRef({ x: 0, y: 0 });
-  const firing = useRef(false);
   const lastShot = useRef(0);
   const reloading = useRef(false);
   const ended = useRef(false);
@@ -283,7 +362,6 @@ function GameLogic({
   const statsRef = useRef(stats);
   const enemiesRef = useRef(enemies);
   const euler = useRef(new THREE.Euler(0, 0, 0, "YXZ"));
-  const ray = useRef(new THREE.Raycaster());
   const spread = useRef(0);
   const tracerId = useRef(0);
   const holdAcc = useRef(0);
@@ -345,26 +423,14 @@ function GameLogic({
     const dir = new THREE.Vector3();
     camera.getWorldDirection(dir);
     const moving =
-      Math.abs(moveInput.current.x) + Math.abs(moveInput.current.y) > 0.2;
-    dir.x += (Math.random() - 0.5) * (loadout.spread + spread.current + (moving ? MOVE_SPREAD : 0));
+      Math.abs(moveInput.current.x) + Math.abs(moveInput.current.z) > 0.2;
+    dir.x +=
+      (Math.random() - 0.5) *
+      (loadout.spread + spread.current + (moving ? MOVE_SPREAD : 0));
     dir.y += (Math.random() - 0.5) * (loadout.spread * 0.7 + spread.current * 0.5);
     dir.normalize();
 
     const hitPoint = origin.clone().add(dir.clone().multiplyScalar(70));
-    ray.current.set(origin, dir);
-    ray.current.far = 70;
-
-    const meshes: THREE.Object3D[] = [];
-    camera.parent?.parent?.traverse(() => {});
-    // collect enemy meshes from scene
-    camera.parent?.traverse(() => {});
-    const scene = camera.parent;
-    if (scene) {
-      scene.traverse((o) => {
-        if ((o as THREE.Mesh).isMesh && o.userData?.enemyId) meshes.push(o);
-      });
-    }
-    // fallback: ray against enemy positions
     let best: { id: string; part: string; dist: number; point: THREE.Vector3 } | null =
       null;
     for (const e of enemiesRef.current) {
@@ -386,30 +452,21 @@ function GameLogic({
 
     const to = best?.point ?? hitPoint;
     const id = ++tracerId.current;
-    setTracers((prev) =>
-      [...prev.slice(-10), { id, from: origin.clone(), to: to.clone(), born: performance.now() }],
-    );
+    setTracers((prev) => [
+      ...prev.slice(-10),
+      { id, from: origin.clone(), to: to.clone(), born: performance.now() },
+    ]);
 
-    setStats((p) => ({
-      ...p,
-      ammo: p.ammo - 1,
-      shotsFired: p.shotsFired + 1,
-    }));
-
+    setStats((p) => ({ ...p, ammo: p.ammo - 1, shotsFired: p.shotsFired + 1 }));
     if (!best) return;
 
     const target = enemiesRef.current.find((e) => e.id === best!.id);
     if (!target || !target.alive) return;
 
-    const dmg = Math.round(
-      loadout.damage * (best.part === "head" ? HEADSHOT_MULT : 1),
-    );
-    const counts =
-      mode === "hunt" ? target.faction === opposite : true;
-
+    const dmg = Math.round(loadout.damage * (best.part === "head" ? HEADSHOT_MULT : 1));
+    const counts = mode === "hunt" ? target.faction === opposite : true;
     sounds.play(best.part === "head" ? "headshot" : "hit");
     setHitFlashes((h) => ({ ...h, [target.id]: performance.now() }));
-
     setEnemies((list) =>
       list.map((e) => {
         if (e.id !== target.id) return e;
@@ -427,7 +484,7 @@ function GameLogic({
         kills: p.kills + (killed && counts ? 1 : 0),
       };
     });
-  }, [camera, doReload, loadout, mode, opposite, sounds]);
+  }, [camera, doReload, loadout, mode, moveInput, opposite, sounds]);
 
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
@@ -449,6 +506,7 @@ function GameLogic({
     if (ended.current) return;
     const now = performance.now() / 1000;
     const elapsed = (performance.now() - startedAt.current) / 1000;
+    setHudLeft(Math.max(0, MATCH_SECONDS - Math.floor(elapsed)));
 
     if (elapsed >= MATCH_SECONDS) {
       finish(mode === "hold" ? holdAcc.current >= 18 : false, statsRef.current.deaths);
@@ -456,31 +514,33 @@ function GameLogic({
     }
 
     euler.current.setFromQuaternion(camera.quaternion);
-    euler.current.y -= lookDelta.current.x * LOOK_SENS;
-    euler.current.x -= lookDelta.current.y * LOOK_SENS;
+    euler.current.y -= lookDelta.current.x;
+    euler.current.x -= lookDelta.current.y;
     euler.current.x = Math.max(-1.2, Math.min(1.2, euler.current.x));
     camera.quaternion.setFromEuler(euler.current);
     lookDelta.current.x = 0;
     lookDelta.current.y = 0;
 
     let mx = moveInput.current.x;
-    let my = moveInput.current.y;
-    if (keys.current["KeyW"] || keys.current["ArrowUp"]) my += 1;
-    if (keys.current["KeyS"] || keys.current["ArrowDown"]) my -= 1;
+    let mz = moveInput.current.z;
+    if (keys.current["KeyW"] || keys.current["ArrowUp"]) mz -= 1;
+    if (keys.current["KeyS"] || keys.current["ArrowDown"]) mz += 1;
     if (keys.current["KeyA"] || keys.current["ArrowLeft"]) mx -= 1;
     if (keys.current["KeyD"] || keys.current["ArrowRight"]) mx += 1;
-    const mag = Math.hypot(mx, my);
+    const mag = Math.hypot(mx, mz);
     if (mag > 1) {
       mx /= mag;
-      my /= mag;
+      mz /= mag;
     }
     if (mag > MOVE_DEADZONE) {
       const forward = new THREE.Vector3();
       camera.getWorldDirection(forward);
       forward.y = 0;
       forward.normalize();
-      const right = new THREE.Vector3().crossVectors(forward, new THREE.Vector3(0, 1, 0)).normalize();
-      camera.position.addScaledVector(forward, my * PLAYER_SPEED * delta);
+      const right = new THREE.Vector3()
+        .crossVectors(forward, new THREE.Vector3(0, 1, 0))
+        .normalize();
+      camera.position.addScaledVector(forward, -mz * PLAYER_SPEED * delta);
       camera.position.addScaledVector(right, mx * PLAYER_SPEED * delta);
     }
     camera.position.y = PLAYER_HEIGHT;
@@ -488,19 +548,19 @@ function GameLogic({
     camera.position.x = Math.max(-lim, Math.min(lim, camera.position.x));
     camera.position.z = Math.max(-lim, Math.min(lim, camera.position.z));
 
-    setRecoil((r) => Math.max(0, r - RECOIL_RECOVERY * delta * r));
+    setRecoil((r) => Math.max(0, r - RECOIL_RECOVERY * delta * Math.max(r, 0.05)));
     spread.current = Math.max(0, spread.current - delta * 0.12);
 
     if (firing.current) doShoot();
 
     if (mode === "hold") {
-      const onPoint = camera.position.length() < 6.2;
+      const onPoint = Math.hypot(camera.position.x, camera.position.z) < 6.2;
       if (onPoint) holdAcc.current += delta;
       setHoldScore(holdAcc.current);
     }
 
-    setEnemies((list) => {
-      const next = list.map((e, idx) => {
+    setEnemies((list) =>
+      list.map((e, idx) => {
         if (!e.alive) return e;
         const pos = new THREE.Vector3(...e.position);
         const toPlayer = camera.position.clone().sub(pos);
@@ -508,8 +568,7 @@ function GameLogic({
         const dist = toPlayer.length();
         const dir = dist > 0.001 ? toPlayer.normalize() : new THREE.Vector3();
         let step = ENEMY_SPEED * delta;
-        if (dist > 6) step *= 1;
-        else if (dist < 4) step *= 0.55;
+        if (dist < 4) step *= 0.55;
         const jitter = Math.sin(now * 1.7 + idx) * 0.4 * delta;
         pos.x += dir.x * step + jitter;
         pos.z += dir.z * step;
@@ -532,16 +591,14 @@ function GameLogic({
             return { ...p, health: hp };
           });
         }
-        return { ...e, position: [pos.x, pos.y, pos.z] };
-      });
-      return next;
-    });
+        return { ...e, position: [pos.x, pos.y, pos.z], lastShot: e.lastShot };
+      }),
+    );
 
     const alive = enemiesRef.current.filter((e) => e.alive).length;
     if (mode === "waves" && alive === 0 && !ended.current) {
-      if (wave >= 2) {
-        finish(true, statsRef.current.deaths);
-      } else {
+      if (wave >= 2) finish(true, statsRef.current.deaths);
+      else {
         const w = wave + 1;
         setWave(w);
         setEnemies(spawnWave(4 + w * 2, opposite, w));
@@ -566,57 +623,38 @@ function GameLogic({
           hitFlash={performance.now() - (hitFlashes[e.id] ?? 0) < 90}
         />
       ))}
-      <HudBridge
+      <group visible={false} />
+      {/* HUD values live on the parent overlay via stats portaled below */}
+      <HtmlStats
         stats={stats}
-        recoil={recoil}
         wave={wave}
         holdScore={holdScore}
         mode={mode}
-        startedAt={startedAt.current}
-        firing={firing}
-        moveInput={moveInput}
-        lookDelta={lookDelta}
-        onReload={doReload}
-        unlock={sounds.unlock}
+        left={hudLeft}
       />
     </>
   );
 }
 
-function HudBridge({
+function HtmlStats({
   stats,
   wave,
   holdScore,
   mode,
-  startedAt,
-  firing,
-  moveInput,
-  lookDelta,
-  onReload,
-  unlock,
+  left,
 }: {
   stats: PlayerStats;
-  recoil: number;
   wave: number;
   holdScore: number;
   mode: BattleMode;
-  startedAt: number;
-  firing: React.MutableRefObject<boolean>;
-  moveInput: React.MutableRefObject<{ x: number; y: number }>;
-  lookDelta: React.MutableRefObject<{ x: number; y: number }>;
-  onReload: () => void;
-  unlock: () => void;
+  left: number;
 }) {
-  // rendered from R3F; actual HUD is a sibling portal via document
   useEffect(() => {
     const el = document.getElementById("bf-hud-stats");
-    if (!el) return;
-    const left = Math.max(
-      0,
-      MATCH_SECONDS - Math.floor((performance.now() - startedAt) / 1000),
-    );
-    el.textContent = `${Math.ceil(stats.health)} HP  •  ${stats.ammo}/${stats.maxAmmo}  •  ${stats.kills} K  •  ${left}s`;
     const sub = document.getElementById("bf-hud-sub");
+    if (el) {
+      el.textContent = `HP ${Math.ceil(stats.health)}  •  ${stats.ammo}/${stats.maxAmmo}  •  ${stats.kills} K  •  ${left}s`;
+    }
     if (sub) {
       sub.textContent =
         mode === "waves"
@@ -625,103 +663,7 @@ function HudBridge({
             ? `HOLD ${holdScore.toFixed(0)}s / 18s`
             : `${stats.hits} hits • ${stats.headshots} HS`;
     }
-  }, [stats, wave, holdScore, mode, startedAt]);
-
-  useEffect(() => {
-    const fire = document.getElementById("bf-fire");
-    const look = document.getElementById("bf-look");
-    const stick = document.getElementById("bf-stick");
-    const reload = document.getElementById("bf-reload");
-    if (!fire || !look || !stick) return;
-
-    const fireDown = (e: Event) => {
-      e.preventDefault();
-      unlock();
-      firing.current = true;
-    };
-    const fireUp = () => {
-      firing.current = false;
-    };
-
-    let lx = 0;
-    let ly = 0;
-    let looking = false;
-    const lookDown = (e: PointerEvent) => {
-      looking = true;
-      lx = e.clientX;
-      ly = e.clientY;
-      (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
-    };
-    const lookMove = (e: PointerEvent) => {
-      if (!looking) return;
-      lookDelta.current.x += e.clientX - lx;
-      lookDelta.current.y += e.clientY - ly;
-      lx = e.clientX;
-      ly = e.clientY;
-    };
-    const lookUp = () => {
-      looking = false;
-    };
-
-    let sx = 0;
-    let sy = 0;
-    let moving = false;
-    const stickDown = (e: PointerEvent) => {
-      moving = true;
-      const r = stick.getBoundingClientRect();
-      sx = r.left + r.width / 2;
-      sy = r.top + r.height / 2;
-      stick.setPointerCapture?.(e.pointerId);
-      moveFrom(e.clientX, e.clientY);
-    };
-    const moveFrom = (x: number, y: number) => {
-      const dx = (x - sx) / 54;
-      const dy = (y - sy) / 54;
-      const m = Math.hypot(dx, dy) || 1;
-      const k = Math.min(1, m);
-      moveInput.current.x = (dx / m) * k;
-      moveInput.current.y = (-dy / m) * k;
-    };
-    const stickMove = (e: PointerEvent) => {
-      if (moving) moveFrom(e.clientX, e.clientY);
-    };
-    const stickUp = () => {
-      moving = false;
-      moveInput.current.x = 0;
-      moveInput.current.y = 0;
-    };
-
-    fire.addEventListener("pointerdown", fireDown);
-    fire.addEventListener("pointerup", fireUp);
-    fire.addEventListener("pointercancel", fireUp);
-    fire.addEventListener("pointerleave", fireUp);
-    look.addEventListener("pointerdown", lookDown as EventListener);
-    look.addEventListener("pointermove", lookMove as EventListener);
-    look.addEventListener("pointerup", lookUp);
-    look.addEventListener("pointercancel", lookUp);
-    stick.addEventListener("pointerdown", stickDown as EventListener);
-    stick.addEventListener("pointermove", stickMove as EventListener);
-    stick.addEventListener("pointerup", stickUp);
-    stick.addEventListener("pointercancel", stickUp);
-    reload?.addEventListener("click", onReload);
-
-    return () => {
-      fire.removeEventListener("pointerdown", fireDown);
-      fire.removeEventListener("pointerup", fireUp);
-      fire.removeEventListener("pointercancel", fireUp);
-      fire.removeEventListener("pointerleave", fireUp);
-      look.removeEventListener("pointerdown", lookDown as EventListener);
-      look.removeEventListener("pointermove", lookMove as EventListener);
-      look.removeEventListener("pointerup", lookUp);
-      look.removeEventListener("pointercancel", lookUp);
-      stick.removeEventListener("pointerdown", stickDown as EventListener);
-      stick.removeEventListener("pointermove", stickMove as EventListener);
-      stick.removeEventListener("pointerup", stickUp);
-      stick.removeEventListener("pointercancel", stickUp);
-      reload?.removeEventListener("click", onReload);
-    };
-  }, [firing, lookDelta, moveInput, onReload, unlock]);
-
+  }, [stats, wave, holdScore, mode, left]);
   return null;
 }
 
@@ -732,11 +674,50 @@ export function ShooterCanvas({
   mode = "hunt",
   onExit,
 }: Props) {
+  const moveInput = useRef({ x: 0, z: 0 });
+  const lookDelta = useRef({ x: 0, y: 0 });
+  const firing = useRef(false);
+  const lookDragging = useRef(false);
+  const lastLook = useRef({ x: 0, y: 0 });
+  const sounds = useBattleSounds();
+
+  const onLookDown = (e: React.PointerEvent) => {
+    const target = e.target as HTMLElement;
+    if (target.closest("[data-fire-btn]") || target.closest("[data-move-stick]")) {
+      return;
+    }
+    e.preventDefault();
+    lookDragging.current = true;
+    lastLook.current = { x: e.clientX, y: e.clientY };
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+
+  const onLookMove = (e: React.PointerEvent) => {
+    if (!lookDragging.current) return;
+    lookDelta.current.x += (e.clientX - lastLook.current.x) * LOOK_SENS;
+    lookDelta.current.y += (e.clientY - lastLook.current.y) * LOOK_SENS;
+    lastLook.current = { x: e.clientX, y: e.clientY };
+  };
+
+  const onLookUp = (e: React.PointerEvent) => {
+    lookDragging.current = false;
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {
+      /* ignore */
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 bg-black">
       <Canvas
         shadows
-        camera={{ fov: 72, near: 0.08, far: 180, position: [0, PLAYER_HEIGHT, 8] }}
+        camera={{
+          fov: 72,
+          near: 0.08,
+          far: 180,
+          position: [0, PLAYER_HEIGHT, 8],
+        }}
         gl={{ antialias: true, powerPreference: "high-performance" }}
         onCreated={({ camera }) => {
           camera.lookAt(0, PLAYER_HEIGHT, 0);
@@ -762,54 +743,93 @@ export function ShooterCanvas({
           rankBonus={rankBonus}
           mode={mode}
           onMatchEnd={onMatchEnd}
+          moveInput={moveInput}
+          lookDelta={lookDelta}
+          firing={firing}
         />
       </Canvas>
 
-      <div className="pointer-events-none absolute inset-0">
-        <div className="absolute left-1/2 top-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2">
+      <div
+        className="absolute inset-0 z-[5] touch-none"
+        onPointerDown={onLookDown}
+        onPointerMove={onLookMove}
+        onPointerUp={onLookUp}
+        onPointerCancel={onLookUp}
+      />
+
+      <div className="pointer-events-none absolute inset-0 z-10">
+        <div className="absolute left-1/2 top-1/2 h-6 w-6 -translate-x-1/2 -translate-y-1/2">
+          <div className="absolute inset-0 m-auto h-1 w-1 rounded-full bg-white" />
           <div className="absolute left-1/2 top-0 h-2 w-[2px] -translate-x-1/2 bg-white/80" />
           <div className="absolute bottom-0 left-1/2 h-2 w-[2px] -translate-x-1/2 bg-white/80" />
           <div className="absolute left-0 top-1/2 h-[2px] w-2 -translate-y-1/2 bg-white/80" />
           <div className="absolute right-0 top-1/2 h-[2px] w-2 -translate-y-1/2 bg-white/80" />
         </div>
-        <div className="absolute left-3 top-3 rounded-lg bg-black/55 px-3 py-1.5 font-mono text-xs text-white">
+        <div className="absolute left-3 top-3 rounded-lg bg-black/70 px-3 py-1.5 font-mono text-xs text-white">
           <div id="bf-hud-stats">—</div>
           <div id="bf-hud-sub" className="text-[0.65rem] text-amber-300" />
         </div>
-        <button
-          type="button"
-          onClick={onExit}
-          className="pointer-events-auto absolute right-3 top-3 rounded-lg bg-black/60 px-3 py-1 text-[0.65rem] font-black uppercase tracking-widest text-zinc-300"
-        >
-          Exit
-        </button>
       </div>
 
-      <div
-        id="bf-look"
-        className="absolute inset-0 z-10"
-        style={{ touchAction: "none" }}
-      />
-      <div
-        id="bf-stick"
-        className="absolute bottom-8 left-6 z-20 h-28 w-28 rounded-full border border-white/20 bg-white/10"
-        style={{ touchAction: "none" }}
-      />
       <button
-        id="bf-fire"
         type="button"
-        className="absolute bottom-10 right-6 z-20 h-24 w-24 rounded-full bg-red-600/90 text-xs font-black uppercase tracking-widest text-white shadow-lg shadow-red-900/60"
-        style={{ touchAction: "none" }}
+        onClick={onExit}
+        className="absolute right-3 top-3 z-30 rounded-xl bg-red-600 px-4 py-1.5 text-sm font-black text-white"
+      >
+        EXIT
+      </button>
+
+      <button
+        type="button"
+        data-fire-btn
+        className="absolute left-1/2 top-1/2 z-20 rounded-full bg-red-600/85 text-[11px] font-black text-white touch-none select-none"
+        style={{
+          width: CENTER_FIRE_SIZE,
+          height: CENTER_FIRE_SIZE,
+          transform: "translate(-50%, 40px)",
+        }}
+        onPointerDown={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          void sounds.unlock();
+          firing.current = true;
+        }}
+        onPointerUp={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          firing.current = false;
+        }}
+        onPointerCancel={() => {
+          firing.current = false;
+        }}
+        onContextMenu={(e) => e.preventDefault()}
       >
         FIRE
       </button>
+
       <button
-        id="bf-reload"
         type="button"
-        className="absolute bottom-36 right-10 z-20 rounded-full bg-zinc-800/90 px-4 py-2 text-[0.6rem] font-black uppercase tracking-widest text-zinc-200"
+        className="absolute bottom-36 right-6 z-30 rounded-full bg-zinc-800/90 px-4 py-2 text-[0.6rem] font-black uppercase tracking-widest text-zinc-200"
+        onPointerDown={(e) => {
+          e.stopPropagation();
+        }}
+        onClick={(e) => {
+          e.stopPropagation();
+          window.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyR" }));
+        }}
       >
         Reload
       </button>
+
+      <div className="absolute bottom-6 left-3 z-30" data-move-stick>
+        <VirtualStick
+          label="Move"
+          size={132}
+          onChange={(x, y) => {
+            moveInput.current = { x, z: y };
+          }}
+        />
+      </div>
     </div>
   );
 }
