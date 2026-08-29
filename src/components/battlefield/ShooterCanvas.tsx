@@ -36,7 +36,7 @@ interface Props {
 
 const MOVE_DEADZONE = 0.14;
 const LOOK_SENS = 0.0028;
-const CENTER_FIRE_SIZE = 64;
+const CENTER_FIRE_SIZE = 84;
 
 type Tracer = {
   id: number;
@@ -623,8 +623,6 @@ function GameLogic({
           hitFlash={performance.now() - (hitFlashes[e.id] ?? 0) < 90}
         />
       ))}
-      <group visible={false} />
-      {/* HUD values live on the parent overlay via stats portaled below */}
       <HtmlStats
         stats={stats}
         wave={wave}
@@ -781,12 +779,25 @@ export function ShooterCanvas({
 
       <button
         type="button"
+        className="absolute bottom-36 right-5 z-30 rounded-full border border-white/15 bg-zinc-800/90 px-4 py-2 text-[0.6rem] font-black uppercase tracking-widest text-zinc-200"
+        onPointerDown={(e) => {
+          e.stopPropagation();
+        }}
+        onClick={(e) => {
+          e.stopPropagation();
+          window.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyR" }));
+        }}
+      >
+        Reload
+      </button>
+
+      <button
+        type="button"
         data-fire-btn
-        className="absolute left-1/2 top-1/2 z-20 rounded-full bg-red-600/85 text-[11px] font-black text-white touch-none select-none"
+        className="absolute bottom-8 right-5 z-30 flex items-center justify-center rounded-full border-2 border-white/35 bg-gradient-to-b from-red-500 to-red-700 text-[11px] font-black tracking-widest text-white shadow-[0_8px_24px_rgba(220,38,38,0.55)] touch-none select-none active:scale-95 active:from-red-400"
         style={{
           width: CENTER_FIRE_SIZE,
           height: CENTER_FIRE_SIZE,
-          transform: "translate(-50%, 40px)",
         }}
         onPointerDown={(e) => {
           e.preventDefault();
@@ -805,20 +816,6 @@ export function ShooterCanvas({
         onContextMenu={(e) => e.preventDefault()}
       >
         FIRE
-      </button>
-
-      <button
-        type="button"
-        className="absolute bottom-36 right-6 z-30 rounded-full bg-zinc-800/90 px-4 py-2 text-[0.6rem] font-black uppercase tracking-widest text-zinc-200"
-        onPointerDown={(e) => {
-          e.stopPropagation();
-        }}
-        onClick={(e) => {
-          e.stopPropagation();
-          window.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyR" }));
-        }}
-      >
-        Reload
       </button>
 
       <div className="absolute bottom-6 left-3 z-30" data-move-stick>
