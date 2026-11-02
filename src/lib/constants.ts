@@ -20,3 +20,4 @@ export * from "./constants/notifications";
 export * from "./constants/battlefield";
 export * from "./constants/war-mode";
 export * from "./constants/war-targets";
+export * from "./constants/memewar";
