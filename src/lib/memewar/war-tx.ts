@@ -5,7 +5,7 @@
  *   2) the STON.fi v1 swap (jetton transfer → router with swap forward payload)
  */
 import "@/lib/onchain/buffer-polyfill";
-import { Address, beginCell, toNano } from "@ton/core";
+import { Address, beginCell, toNano, type Cell } from "@ton/core";
 import { CLAIM_TREASURY } from "@/lib/onchain/contracts";
 import { buildJettonTransferBodySafe, resolveUserJettonWallet } from "@/lib/onchain/topup-tx";
 import { MEMEWAR_TAX_GAS_TON } from "@/lib/constants/memewar";
@@ -13,8 +13,8 @@ import type { SwapQuote } from "./types";
 
 const STONFI_V1_SWAP_OP = 0x25938561;
 
-function b64(cell: ReturnType<typeof beginCell> extends { endCell(): infer C } ? C : never): string {
-  const boc = (cell as { toBoc(): Uint8Array }).toBoc();
+function b64(cell: Cell): string {
+  const boc = new Uint8Array(cell.toBoc());
   let s = "";
   for (const byte of boc) s += String.fromCharCode(byte);
   return btoa(s);
