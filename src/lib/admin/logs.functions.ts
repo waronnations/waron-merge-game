@@ -16,7 +16,7 @@ import {
 // ─── Audit Log ─────────────────────────────────────────────────────
 
 export const adminGetAuditLogFn = createServerFn({ method: "GET" })
-  .validator((input: unknown) =>
+  .inputValidator((input: unknown) =>
     z
       .object({
         limit: z.number().int().min(1).max(200).optional().default(100),
