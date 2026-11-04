@@ -24,7 +24,7 @@ import {
 // ─── Users ─────────────────────────────────────────────────────────
 
 export const adminSearchUsersFn = createServerFn({ method: "GET" })
-  .validator((input: unknown) =>
+  .inputValidator((input: unknown) =>
     z
       .object({
         query: z.string().optional().default(""),
@@ -40,7 +40,7 @@ export const adminSearchUsersFn = createServerFn({ method: "GET" })
   });
 
 export const adminGetUserFn = createServerFn({ method: "GET" })
-  .validator((input: unknown) =>
+  .inputValidator((input: unknown) =>
     z.object({ userId: z.number().int().positive() }).parse(input),
   )
   .handler(async ({ data }) => {
@@ -51,7 +51,7 @@ export const adminGetUserFn = createServerFn({ method: "GET" })
   });
 
 export const adminUpdateUserTokensFn = createServerFn({ method: "POST" })
-  .validator((input: unknown) =>
+  .inputValidator((input: unknown) =>
     z
       .object({
         userId: z.number().int().positive(),
@@ -76,7 +76,7 @@ export const adminUpdateUserTokensFn = createServerFn({ method: "POST" })
   });
 
 export const adminUpdateUserGloryFn = createServerFn({ method: "POST" })
-  .validator((input: unknown) =>
+  .inputValidator((input: unknown) =>
     z
       .object({
         userId: z.number().int().positive(),
@@ -94,7 +94,7 @@ export const adminUpdateUserGloryFn = createServerFn({ method: "POST" })
   });
 
 export const adminClearTraitorFn = createServerFn({ method: "POST" })
-  .validator((input: unknown) =>
+  .inputValidator((input: unknown) =>
     z
       .object({
         userId: z.number().int().positive(),
@@ -111,7 +111,7 @@ export const adminClearTraitorFn = createServerFn({ method: "POST" })
   });
 
 export const adminSetBannedFn = createServerFn({ method: "POST" })
-  .validator((input: unknown) =>
+  .inputValidator((input: unknown) =>
     z
       .object({
         userId: z.number().int().positive(),
@@ -129,7 +129,7 @@ export const adminSetBannedFn = createServerFn({ method: "POST" })
   });
 
 export const adminForceLeaveNationFn = createServerFn({ method: "POST" })
-  .validator((input: unknown) =>
+  .inputValidator((input: unknown) =>
     z
       .object({
         userId: z.number().int().positive(),
@@ -146,7 +146,7 @@ export const adminForceLeaveNationFn = createServerFn({ method: "POST" })
   });
 
 export const adminResetBoardFn = createServerFn({ method: "POST" })
-  .validator((input: unknown) =>
+  .inputValidator((input: unknown) =>
     z
       .object({
         userId: z.number().int().positive(),
