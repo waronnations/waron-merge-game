@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AdminRouteRouteImport } from './routes/admin/route'
 import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as TermsRouteImport } from './routes/terms'
+import { Route as WarRouteImport } from './routes/war'
 import { Route as AdminIndexRouteImport } from './routes/admin/index'
 import { Route as AdminEconomyRouteImport } from './routes/admin/economy'
 import { Route as AdminLogsRouteImport } from './routes/admin/logs'
@@ -41,6 +42,11 @@ const PrivacyRoute = PrivacyRouteImport.update({
 const TermsRoute = TermsRouteImport.update({
   id: '/terms',
   path: '/terms',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const WarRoute = WarRouteImport.update({
+  id: '/war',
+  path: '/war',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminIndexRoute = AdminIndexRouteImport.update({
@@ -94,6 +100,7 @@ export interface FileRoutesByFullPath {
   '/admin': typeof AdminRouteRouteWithChildren
   '/privacy': typeof PrivacyRoute
   '/terms': typeof TermsRoute
+  '/war': typeof WarRoute
   '/admin/economy': typeof AdminEconomyRoute
   '/admin/logs': typeof AdminLogsRoute
   '/admin/nations': typeof AdminNationsRoute
@@ -108,6 +115,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/privacy': typeof PrivacyRoute
   '/terms': typeof TermsRoute
+  '/war': typeof WarRoute
   '/admin/economy': typeof AdminEconomyRoute
   '/admin/logs': typeof AdminLogsRoute
   '/admin/nations': typeof AdminNationsRoute
@@ -124,6 +132,7 @@ export interface FileRoutesById {
   '/admin': typeof AdminRouteRouteWithChildren
   '/privacy': typeof PrivacyRoute
   '/terms': typeof TermsRoute
+  '/war': typeof WarRoute
   '/admin/economy': typeof AdminEconomyRoute
   '/admin/logs': typeof AdminLogsRoute
   '/admin/nations': typeof AdminNationsRoute
@@ -141,6 +150,7 @@ export interface FileRouteTypes {
     | '/admin'
     | '/privacy'
     | '/terms'
+    | '/war'
     | '/admin/economy'
     | '/admin/logs'
     | '/admin/nations'
@@ -155,6 +165,7 @@ export interface FileRouteTypes {
     | '/'
     | '/privacy'
     | '/terms'
+    | '/war'
     | '/admin/economy'
     | '/admin/logs'
     | '/admin/nations'
@@ -170,6 +181,7 @@ export interface FileRouteTypes {
     | '/admin'
     | '/privacy'
     | '/terms'
+    | '/war'
     | '/admin/economy'
     | '/admin/logs'
     | '/admin/nations'
@@ -186,6 +198,7 @@ export interface RootRouteChildren {
   AdminRouteRoute: typeof AdminRouteRouteWithChildren
   PrivacyRoute: typeof PrivacyRoute
   TermsRoute: typeof TermsRoute
+  WarRoute: typeof WarRoute
   ApiPublicHealthRoute: typeof ApiPublicHealthRoute
   ApiPublicTelegramLoginRoute: typeof ApiPublicTelegramLoginRoute
   ApiPublicTelegramTickRoute: typeof ApiPublicTelegramTickRoute
@@ -219,6 +232,13 @@ declare module '@tanstack/react-router' {
       path: '/terms'
       fullPath: '/terms'
       preLoaderRoute: typeof TermsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/war': {
+      id: '/war'
+      path: '/war'
+      fullPath: '/war'
+      preLoaderRoute: typeof WarRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin/': {
@@ -314,6 +334,7 @@ const rootRouteChildren: RootRouteChildren = {
   AdminRouteRoute: AdminRouteRouteWithChildren,
   PrivacyRoute: PrivacyRoute,
   TermsRoute: TermsRoute,
+  WarRoute: WarRoute,
   ApiPublicHealthRoute: ApiPublicHealthRoute,
   ApiPublicTelegramLoginRoute: ApiPublicTelegramLoginRoute,
   ApiPublicTelegramTickRoute: ApiPublicTelegramTickRoute,

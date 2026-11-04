@@ -14,3 +14,4 @@
 6. Nations system: WARDOG + WARCAT are permanent default factions. All other nations are fixed real-world countries. First joiner of an empty country becomes leader.
 7. When adding new server functions, always use `createServerFn` + Zod validation + `requireUserId()`.
 8. Schema changes must be additive (`CREATE TABLE IF NOT EXISTS`, `ALTER TABLE … ADD COLUMN IF NOT EXISTS`).
+9. Memecoin War (`/war`) lives in `src/lib/memewar/` + `src/components/memewar/`; swap quotes go through the aggregator in `src/lib/memewar/aggregator/` (providers are pluggable, `MEMEWAR_AGGREGATOR=mock|live`) so DEX integrations can be swapped without touching UI.

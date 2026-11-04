@@ -1,4 +1,5 @@
 // src/components/game/tabs/PlayTab.tsx
+import { Link } from "@tanstack/react-router";
 import { MergeBoard, type PayToken } from "@/components/MergeBoard";
 import { WarModeOverlay } from "@/components/war/WarModeOverlay";
 import type { GameState } from "@/lib/game/types";
@@ -45,6 +46,13 @@ export function PlayTab({
 }) {
   return (
     <div className="flex flex-col gap-0">
+      <Link
+        to="/war"
+        className="mb-3 flex items-center justify-between rounded-2xl border border-destructive/60 bg-destructive/10 px-3 py-2.5 text-xs font-black uppercase tracking-wider text-foreground"
+      >
+        <span>Memecoin War — fight with your real coins</span>
+        <span className="text-destructive">Enter →</span>
+      </Link>
       <WarModeOverlay
         warMode={state.warMode}
         energy={state.energy}

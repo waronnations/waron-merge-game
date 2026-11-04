@@ -134,7 +134,7 @@ export function WarMergeModal({
     if (!exec || !tax || !owner || taxAmt === null) return;
     if (highImpact && !confirmImpact) {
       setConfirmImpact(true);
-      haptic("warning");
+      haptic("medium");
       return;
     }
     try {
@@ -161,13 +161,13 @@ export function WarMergeModal({
       }).catch(() => undefined);
       setTimeout(() => {
         setPhase("success");
-        haptic("success");
+        haptic("heavy");
         onDone(action);
       }, 1800);
     } catch (e) {
       const msg = String((e as Error)?.message ?? e);
       setPhase("error");
-      haptic("error");
+      haptic("medium");
       toast.error(/reject|cancel|declin/i.test(msg) ? "Strike cancelled in wallet." : msg === "jetton_wallet_not_found" ? "Coin wallet not found on-chain." : "Strike failed. Nothing was sent.");
     }
   }

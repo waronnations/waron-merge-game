@@ -15,7 +15,7 @@ import { TON_TARGET } from "./types";
 const addr = z.string().min(40).max(70).regex(/^[A-Za-z0-9_\-:]+$/);
 
 export const getWarHoldingsFn = createServerFn({ method: "POST" })
-  .inputValidator((d: unknown) => z.object({ owner: addr.nullable() }).parse(d))
+  .validator((d: unknown) => z.object({ owner: addr.nullable() }).parse(d))
   .handler(async ({ data }) => {
     if (!data.owner) return { demo: true, holdings: await getDemoHoldings() };
     try {
@@ -27,7 +27,7 @@ export const getWarHoldingsFn = createServerFn({ method: "POST" })
   });
 
 export const getWarQuoteFn = createServerFn({ method: "POST" })
-  .inputValidator((d: unknown) =>
+  .validator((d: unknown) =>
     z
       .object({
         offerMaster: addr,
@@ -55,7 +55,7 @@ export const getWarSeasonFn = createServerFn({ method: "GET" }).handler(async ()
 });
 
 export const recordWarMergeFn = createServerFn({ method: "POST" })
-  .inputValidator((d: unknown) =>
+  .validator((d: unknown) =>
     z
       .object({
         wallet: addr,

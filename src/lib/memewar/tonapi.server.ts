@@ -112,38 +112,48 @@ export async function getWalletHoldings(owner: string): Promise<WarHolding[]> {
   return holdings.sort((a, b) => b.usd - a.usd || b.amount - a.amount);
 }
 
+async function getCoinsBulk(masters: string[]): Promise<Map<string, WarCoin>> {
+  const out = new Map<string, WarCoin>();
+  const missing = masters.filter((m) => {
+    const hit = metaCache.get(friendly(m));
+    if (hit && Date.now() - hit.at < META_TTL) out.set(friendly(m), hit.coin);
+    return !out.has(friendly(m));
+  });
+  if (!missing.length) return out;
+  const res = await fetch(`${BASE}/jettons/_bulk`, {
+    method: "POST",
+    headers: { ...headers(), "Content-Type": "application/json" },
+    body: JSON.stringify({ account_ids: missing }),
+    signal: AbortSignal.timeout(8000),
+  });
+  if (!res.ok) throw new Error(`tonapi_${res.status}`);
+  const data = (await res.json()) as { jettons: { metadata: TonapiJettonMeta; preview?: string; verification?: string }[] };
+  for (const j of data.jettons ?? []) {
+    const coin = toCoin(j.metadata, j.preview, j.verification, 0);
+    metaCache.set(coin.master, { coin, at: Date.now() });
+    out.set(coin.master, coin);
+  }
+  return out;
+}
+
 /** Demo board: real metadata + real prices, fake amounts. */
 export async function getDemoHoldings(): Promise<WarHolding[]> {
   const masters = MEMEWAR_KNOWN_COINS.map((c) => c.master);
-  const [prices, coins] = await Promise.all([
+  const [prices, meta] = await Promise.all([
     getPrices(masters),
-    Promise.all(
-      MEMEWAR_KNOWN_COINS.map((k) =>
-        getCoin(k.master).catch(
-          (): WarCoin => ({
-            master: k.master,
-            symbol: k.symbol,
-            name: k.symbol,
-            decimals: 9,
-            image: null,
-            imageRaw: null,
-            priceUsd: 0,
-            verified: false,
-          }),
-        ),
-      ),
-    ),
+    getCoinsBulk(masters).catch(() => new Map<string, WarCoin>()),
   ]);
-  return coins
-    .map((c) => {
-      const coin = { ...c, priceUsd: prices[c.master] ?? 0 };
-      const amount = MEMEWAR_DEMO_AMOUNTS[c.symbol] ?? 1000;
-      return {
-        coin,
-        amount,
-        usd: amount * coin.priceUsd,
-        balanceUnits: (BigInt(Math.round(amount)) * 10n ** BigInt(coin.decimals)).toString(),
-      };
-    })
-    .sort((a, b) => b.usd - a.usd || b.amount - a.amount);
+  return MEMEWAR_KNOWN_COINS.map((k) => {
+    const base: WarCoin = meta.get(friendly(k.master)) ?? {
+      master: k.master, symbol: k.symbol, name: k.symbol, decimals: 9, image: null, imageRaw: null, priceUsd: 0, verified: false,
+    };
+    const coin = { ...base, priceUsd: prices[base.master] ?? 0 };
+    const amount = MEMEWAR_DEMO_AMOUNTS[k.symbol] ?? 1000;
+    return {
+      coin,
+      amount,
+      usd: amount * coin.priceUsd,
+      balanceUnits: (BigInt(Math.round(amount)) * 10n ** BigInt(coin.decimals)).toString(),
+    };
+  }).sort((a, b) => b.usd - a.usd || b.amount - a.amount);
 }

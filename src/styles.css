@@ -236,3 +236,18 @@ body {
   background: #333;
   border-radius: 4px;
 }
+
+/* Memecoin War board */
+.war-tile {
+  background: radial-gradient(circle at 50% 30%, color-mix(in srgb, var(--destructive) 14%, var(--card)), var(--card) 70%);
+}
+.war-ticker-track {
+  animation: war-ticker 28s linear infinite;
+}
+@keyframes war-ticker {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .war-ticker-track { animation: none; }
+}
