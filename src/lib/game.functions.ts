@@ -45,7 +45,7 @@ export const getProgress = createServerFn({ method: "GET" }).handler(
 );
 
 export const syncProgress = createServerFn({ method: "POST" })
-  .validator((input: unknown) => StateSchema.parse(input))
+  .inputValidator((input: unknown) => StateSchema.parse(input))
   .handler(async ({ data }) => {
     if (!hasDatabase())
       return { ok: false as const, reason: "database_not_configured" };
@@ -128,7 +128,7 @@ export const syncProgress = createServerFn({ method: "POST" })
   });
 
 export const getLeaderboard = createServerFn({ method: "GET" })
-  .validator((input: unknown) => LeaderboardInput.parse(input ?? {}))
+  .inputValidator((input: unknown) => LeaderboardInput.parse(input ?? {}))
   .handler(async ({ data }): Promise<LeaderboardEntry[]> => {
     if (!hasDatabase()) return [];
     await ensureSchema();
@@ -140,7 +140,7 @@ export const getLeaderboard = createServerFn({ method: "GET" })
  * Spend the full cost from the chosen token only (WARDOG or WARCAT).
  */
 export const purchaseShopItem = createServerFn({ method: "POST" })
-  .validator((input: unknown) =>
+  .inputValidator((input: unknown) =>
     z
       .object({
         itemId: z.enum(["energyPack", "gloryBoost", "nukePack"]),
@@ -167,7 +167,7 @@ export const purchaseShopItem = createServerFn({ method: "POST" })
  * clientEnergy = what the Mini App currently shows (fixes local-first desync).
  */
 export const recoverEnergy = createServerFn({ method: "POST" })
-  .validator((input: unknown) =>
+  .inputValidator((input: unknown) =>
     z
       .object({
         payWith: PayTokenSchema.default("wardog"),
@@ -196,7 +196,7 @@ export const claimDaily = createServerFn({ method: "POST" }).handler(
 );
 
 export const claimTask = createServerFn({ method: "POST" })
-  .validator((input: unknown) =>
+  .inputValidator((input: unknown) =>
     z.object({ taskId: z.string().min(1).max(64) }).parse(input),
   )
   .handler(async ({ data }) => {
@@ -209,7 +209,7 @@ export const claimTask = createServerFn({ method: "POST" })
   });
 
 export const claimDailyQuest = createServerFn({ method: "POST" })
-  .validator((input: unknown) =>
+  .inputValidator((input: unknown) =>
     z.object({ questId: z.string().min(1).max(64) }).parse(input),
   )
   .handler(async ({ data }) => {
@@ -226,7 +226,7 @@ export const claimDailyQuest = createServerFn({ method: "POST" })
  * Soft rate limit (60/min) stops pure spam, not normal play.
  */
 export const launchNuke = createServerFn({ method: "POST" })
-  .validator((input: unknown) =>
+  .inputValidator((input: unknown) =>
     z
       .object({
         targetNationId: z.number().int().positive(),
@@ -251,7 +251,7 @@ export const useNuke = createServerFn({ method: "POST" }).handler(async () => {
 });
 
 export const commitMerge = createServerFn({ method: "POST" })
-  .validator((input: unknown) =>
+  .inputValidator((input: unknown) =>
     z
       .object({
         from: z.number().int().min(0).max(35),
@@ -270,7 +270,7 @@ export const commitMerge = createServerFn({ method: "POST" })
 
 /** Accept client placement so local + server boards stay in sync. */
 export const commitSpawn = createServerFn({ method: "POST" })
-  .validator((input: unknown) =>
+  .inputValidator((input: unknown) =>
     z
       .object({
         targetIdx: z.number().int().min(0).max(35).optional(),
@@ -292,7 +292,7 @@ export const commitSpawn = createServerFn({ method: "POST" })
   });
 
 export const commitSwap = createServerFn({ method: "POST" })
-  .validator((input: unknown) =>
+  .inputValidator((input: unknown) =>
     z
       .object({
         from: z.number().int().min(0).max(35),
@@ -314,7 +314,7 @@ export const commitSwap = createServerFn({ method: "POST" })
  * Enforces adversary-only side rules.
  */
 export const commitDeploy = createServerFn({ method: "POST" })
-  .validator((input: unknown) =>
+  .inputValidator((input: unknown) =>
     z
       .object({
         index: z.number().int().min(0).max(35),
@@ -331,7 +331,7 @@ export const commitDeploy = createServerFn({ method: "POST" })
   });
 
 export const resolveHybrid = createServerFn({ method: "POST" })
-  .validator((input: unknown) =>
+  .inputValidator((input: unknown) =>
     z
       .object({
         choice: z.enum(["sacrifice", "keep"]),
@@ -352,7 +352,7 @@ export const resolveHybrid = createServerFn({ method: "POST" })
  * Dedicated commit — forceSync cannot clear board without a merge increase.
  */
 export const sacrificeBoardHybrid = createServerFn({ method: "POST" })
-  .validator((input: unknown) =>
+  .inputValidator((input: unknown) =>
     z.object({ idx: z.number().int().min(0).max(35) }).parse(input),
   )
   .handler(async ({ data }) => {
@@ -365,7 +365,7 @@ export const sacrificeBoardHybrid = createServerFn({ method: "POST" })
   });
 
 export const completeHybridWithArt = createServerFn({ method: "POST" })
-  .validator((input: unknown) =>
+  .inputValidator((input: unknown) =>
     z
       .object({
         imageUrl: z.string().url().max(2048),

@@ -24,7 +24,7 @@ export const getAdminSessionFn = createServerFn({ method: "GET" }).handler(async
 });
 
 export const adminLoginFn = createServerFn({ method: "POST" })
-  .validator((input: unknown) =>
+  .inputValidator((input: unknown) =>
     z.object({ wallet: z.string().min(10).max(120) }).parse(input),
   )
   .handler(async ({ data }) => {

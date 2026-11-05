@@ -28,7 +28,7 @@ export interface BattleRewardResult {
 }
 
 export const claimBattleReward = createServerFn({ method: "POST" })
-  .validator((input: unknown) => BattleResultSchema.parse(input))
+  .inputValidator((input: unknown) => BattleResultSchema.parse(input))
   .handler(async ({ data }): Promise<BattleRewardResult> => {
     if (!hasDatabase()) throw new Error("database_unavailable");
     await ensureSchema();

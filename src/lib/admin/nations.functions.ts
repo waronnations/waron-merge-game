@@ -26,7 +26,7 @@ import {
 // ─── Nations ───────────────────────────────────────────────────────
 
 export const adminListNationsFn = createServerFn({ method: "GET" })
-  .validator((input: unknown) =>
+  .inputValidator((input: unknown) =>
     z
       .object({
         limit: z.number().int().min(1).max(500).optional().default(300),
@@ -41,7 +41,7 @@ export const adminListNationsFn = createServerFn({ method: "GET" })
   });
 
 export const adminRemovePlayerFromNationFn = createServerFn({ method: "POST" })
-  .validator((input: unknown) =>
+  .inputValidator((input: unknown) =>
     z
       .object({
         nationId: z.number().int().positive(),
@@ -64,7 +64,7 @@ export const adminRemovePlayerFromNationFn = createServerFn({ method: "POST" })
   });
 
 export const adminHealNationsFn = createServerFn({ method: "POST" })
-  .validator((input: unknown) =>
+  .inputValidator((input: unknown) =>
     z.object({ reason: z.string().min(1).max(500) }).parse(input),
   )
   .handler(async ({ data }) => {
@@ -77,7 +77,7 @@ export const adminHealNationsFn = createServerFn({ method: "POST" })
 
 /** @deprecated → adminHealNationsFn */
 export const adminClearOrphanedLeadersFn = createServerFn({ method: "POST" })
-  .validator((input: unknown) =>
+  .inputValidator((input: unknown) =>
     z.object({ reason: z.string().min(1).max(500) }).parse(input),
   )
   .handler(async ({ data }) => {
@@ -90,7 +90,7 @@ export const adminClearOrphanedLeadersFn = createServerFn({ method: "POST" })
 
 /** @deprecated → adminHealNationsFn */
 export const adminFixMultiLeadersFn = createServerFn({ method: "POST" })
-  .validator((input: unknown) =>
+  .inputValidator((input: unknown) =>
     z.object({ reason: z.string().min(1).max(500) }).parse(input),
   )
   .handler(async ({ data }) => {
@@ -102,7 +102,7 @@ export const adminFixMultiLeadersFn = createServerFn({ method: "POST" })
   });
 
 export const adminClearNationLeaderFn = createServerFn({ method: "POST" })
-  .validator((input: unknown) =>
+  .inputValidator((input: unknown) =>
     z
       .object({
         nationId: z.number().int().positive(),
@@ -121,7 +121,7 @@ export const adminClearNationLeaderFn = createServerFn({ method: "POST" })
 // ─── Nation detail ─────────────────────────────────────────────────
 
 export const adminGetNationDetailsFn = createServerFn({ method: "GET" })
-  .validator((input: unknown) =>
+  .inputValidator((input: unknown) =>
     z.object({ nationId: z.number().int().positive() }).parse(input),
   )
   .handler(async ({ data }) => {
@@ -132,7 +132,7 @@ export const adminGetNationDetailsFn = createServerFn({ method: "GET" })
   });
 
 export const adminForceTransferOwnershipFn = createServerFn({ method: "POST" })
-  .validator((input: unknown) =>
+  .inputValidator((input: unknown) =>
     z
       .object({
         nationId: z.number().int().positive(),
@@ -155,7 +155,7 @@ export const adminForceTransferOwnershipFn = createServerFn({ method: "POST" })
   });
 
 export const adminUpdateNationVaultFn = createServerFn({ method: "POST" })
-  .validator((input: unknown) =>
+  .inputValidator((input: unknown) =>
     z
       .object({
         nationId: z.number().int().positive(),
@@ -180,7 +180,7 @@ export const adminUpdateNationVaultFn = createServerFn({ method: "POST" })
   });
 
 export const adminSetNationProtectionFn = createServerFn({ method: "POST" })
-  .validator((input: unknown) =>
+  .inputValidator((input: unknown) =>
     z
       .object({
         nationId: z.number().int().positive(),
@@ -205,7 +205,7 @@ export const adminSetNationProtectionFn = createServerFn({ method: "POST" })
   });
 
 export const adminSetNationRedemptionPriceFn = createServerFn({ method: "POST" })
-  .validator((input: unknown) =>
+  .inputValidator((input: unknown) =>
     z
       .object({
         nationId: z.number().int().positive(),
@@ -230,7 +230,7 @@ export const adminSetNationRedemptionPriceFn = createServerFn({ method: "POST" }
   });
 
 export const adminKickNationMemberFn = createServerFn({ method: "POST" })
-  .validator((input: unknown) =>
+  .inputValidator((input: unknown) =>
     z
       .object({
         nationId: z.number().int().positive(),
