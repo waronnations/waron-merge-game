@@ -20,26 +20,25 @@ import { OpsTab } from "@/components/game/tabs/OpsTab";
 import { WorldTab, type WorldSub } from "@/components/game/tabs/WorldTab";
 import { EarnTab, type EarnSub } from "@/components/game/tabs/EarnTab";
 import { BaseTab, type BaseSub } from "@/components/game/tabs/BaseTab";
-import { WarModeVictoryModal } from "@/components/war/WarModeVictoryModal";
 import { BattlefieldTab } from "@/components/battlefield/BattlefieldTab";
 
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "War On Nations — Merge. Build. Conquer. Feed the Pack." },
+      { title: "War On Nations — Memecoin War on TON" },
       {
         name: "description",
         content:
-          "WAR On Nations is a Telegram merge game. Fuse WARDOG and WARCAT units, earn $WARDOG & $WARCAT, and rise from Private to Warlord.",
+          "Merge your real TON memecoins on the war board. Live DeDust + STON.fi routes, War Tax in any coin, nations and seasonal rankings.",
       },
       {
         property: "og:title",
-        content: "War On Nations — Merge. Build. Conquer. Feed the Pack.",
+        content: "War On Nations — Memecoin War on TON",
       },
       {
         property: "og:description",
         content:
-          "WAR On Nations is a Telegram merge game. Fuse WARDOG and WARCAT units, earn $WARDOG & $WARCAT, and rise from Private to Warlord.",
+          "Merge your real TON memecoins on the war board. Live DeDust + STON.fi routes, War Tax in any coin, nations and seasonal rankings.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
@@ -61,9 +60,6 @@ function WaronMergePage() {
   const [showCocoonModal, setShowCocoonModal] = useState(false);
   const [showResultModal, setShowResultModal] = useState(false);
   const [generatedImageUrl, setGeneratedImageUrl] = useState<string | null>(null);
-
-  // War Mode end modal
-  const [showWarVictory, setShowWarVictory] = useState(false);
 
   const session = useTelegramSession();
   const authenticated = session.status === "authenticated";
@@ -120,20 +116,6 @@ function WaronMergePage() {
       return () => clearTimeout(t);
     }
   }, [game.hydrated, game.canClaimDaily, game.state.hasSeenTutorial]);
-
-  // Show modal for ANY finished War Mode session
-  useEffect(() => {
-    if (
-      game.state.warMode?.sessionComplete === true ||
-      (game.state.warMode?.victory === true && game.state.warMode?.active === false)
-    ) {
-      setShowWarVictory(true);
-    }
-  }, [
-    game.state.warMode?.sessionComplete,
-    game.state.warMode?.victory,
-    game.state.warMode?.active,
-  ]);
 
   useEffect(() => {
     if (!authenticated) return;
@@ -252,21 +234,7 @@ function WaronMergePage() {
               exit={{ opacity: 0, y: -6 }}
               className="space-y-2"
             >
-              <PlayTab
-                state={game.state}
-                onMerge={handleMerge}
-                onSwap={handleSwap}
-                onSpawn={handleSpawn}
-                onRecover={handleRecoverEnergy}
-                canRecoverWardog={canRecoverWardog}
-                canRecoverWarcat={canRecoverWarcat}
-                onSacrificeHybrid={handleSacrificeHybrid}
-                onEnterWarMode={() => game.tryEnterWarMode()}
-                onDeployUnit={(idx) => game.tryDeployUnit(idx)}
-                onActivateAbility={(id) => game.tryActivateAbility(id)}
-                onForceEndWarMode={() => game.forceEndWarMode()}
-                canEnterWarMode={game.canEnterWarMode()}
-              />
+              <PlayTab />
             </motion.div>
           )}
 
@@ -379,14 +347,6 @@ function WaronMergePage() {
         setGeneratedImageUrl={setGeneratedImageUrl}
         handleResolveHybrid={handleResolveHybrid}
         handleHybridWithArt={handleHybridWithArt}
-      />
-
-      <WarModeVictoryModal
-        warMode={game.state.warMode}
-        onClose={() => {
-          setShowWarVictory(false);
-          game.clearWarModeVictory?.();
-        }}
       />
     </div>
   );

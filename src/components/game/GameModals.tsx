@@ -10,7 +10,6 @@ import { NukedLockModal } from "@/components/NukedLockModal";
 import { OpsJailModal } from "@/components/OpsJailModal";
 import { GlobalStrikeToast } from "@/components/GlobalStrikeToast";
 import { GlobalOpsEventToast } from "@/components/GlobalOpsEventToast";
-import { WarModeVictoryModal } from "@/components/war/WarModeVictoryModal";
 import type { useGame } from "@/lib/game-state";
 import { isCorrectSide, countHybridsOnSide } from "@/lib/game/helpers";
 import { toast } from "sonner";
@@ -101,16 +100,6 @@ export function GameModals({
       <OpsJailModal />
       <GlobalStrikeToast />
       <GlobalOpsEventToast />
-
-      {/* War Mode Victory Modal */}
-      <WarModeVictoryModal
-        warMode={game.state.warMode}
-        onClose={() => {
-          if (typeof game.clearWarModeVictory === "function") {
-            game.clearWarModeVictory();
-          }
-        }}
-      />
 
       <DailyBonusModal
         open={showDaily}
