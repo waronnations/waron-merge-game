@@ -9,34 +9,24 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as IndexRouteImport } from './routes/index'
-import { Route as AdminRouteRouteImport } from './routes/admin/route'
-import { Route as PrivacyRouteImport } from './routes/privacy'
-import { Route as TermsRouteImport } from './routes/terms'
 import { Route as WarRouteImport } from './routes/war'
+import { Route as TermsRouteImport } from './routes/terms'
+import { Route as PrivacyRouteImport } from './routes/privacy'
+import { Route as AdminRouteRouteImport } from './routes/admin/route'
+import { Route as IndexRouteImport } from './routes/index'
 import { Route as AdminIndexRouteImport } from './routes/admin/index'
-import { Route as AdminEconomyRouteImport } from './routes/admin/economy'
-import { Route as AdminLogsRouteImport } from './routes/admin/logs'
-import { Route as AdminNationsRouteImport } from './routes/admin/nations'
-import { Route as AdminToolsRouteImport } from './routes/admin/tools'
 import { Route as AdminUsersRouteImport } from './routes/admin/users'
+import { Route as AdminToolsRouteImport } from './routes/admin/tools'
+import { Route as AdminNationsRouteImport } from './routes/admin/nations'
+import { Route as AdminLogsRouteImport } from './routes/admin/logs'
+import { Route as AdminEconomyRouteImport } from './routes/admin/economy'
 import { Route as ApiPublicHealthRouteImport } from './routes/api/public/health'
-import { Route as ApiPublicTelegramLoginRouteImport } from './routes/api/public/telegram/login'
 import { Route as ApiPublicTelegramTickRouteImport } from './routes/api/public/telegram/tick'
+import { Route as ApiPublicTelegramLoginRouteImport } from './routes/api/public/telegram/login'
 
-const IndexRoute = IndexRouteImport.update({
-  id: '/',
-  path: '/',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AdminRouteRoute = AdminRouteRouteImport.update({
-  id: '/admin',
-  path: '/admin',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const PrivacyRoute = PrivacyRouteImport.update({
-  id: '/privacy',
-  path: '/privacy',
+const WarRoute = WarRouteImport.update({
+  id: '/war',
+  path: '/war',
   getParentRoute: () => rootRouteImport,
 } as any)
 const TermsRoute = TermsRouteImport.update({
@@ -44,9 +34,19 @@ const TermsRoute = TermsRouteImport.update({
   path: '/terms',
   getParentRoute: () => rootRouteImport,
 } as any)
-const WarRoute = WarRouteImport.update({
-  id: '/war',
-  path: '/war',
+const PrivacyRoute = PrivacyRouteImport.update({
+  id: '/privacy',
+  path: '/privacy',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminRouteRoute = AdminRouteRouteImport.update({
+  id: '/admin',
+  path: '/admin',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const IndexRoute = IndexRouteImport.update({
+  id: '/',
+  path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminIndexRoute = AdminIndexRouteImport.update({
@@ -54,19 +54,9 @@ const AdminIndexRoute = AdminIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AdminRouteRoute,
 } as any)
-const AdminEconomyRoute = AdminEconomyRouteImport.update({
-  id: '/economy',
-  path: '/economy',
-  getParentRoute: () => AdminRouteRoute,
-} as any)
-const AdminLogsRoute = AdminLogsRouteImport.update({
-  id: '/logs',
-  path: '/logs',
-  getParentRoute: () => AdminRouteRoute,
-} as any)
-const AdminNationsRoute = AdminNationsRouteImport.update({
-  id: '/nations',
-  path: '/nations',
+const AdminUsersRoute = AdminUsersRouteImport.update({
+  id: '/users',
+  path: '/users',
   getParentRoute: () => AdminRouteRoute,
 } as any)
 const AdminToolsRoute = AdminToolsRouteImport.update({
@@ -74,9 +64,19 @@ const AdminToolsRoute = AdminToolsRouteImport.update({
   path: '/tools',
   getParentRoute: () => AdminRouteRoute,
 } as any)
-const AdminUsersRoute = AdminUsersRouteImport.update({
-  id: '/users',
-  path: '/users',
+const AdminNationsRoute = AdminNationsRouteImport.update({
+  id: '/nations',
+  path: '/nations',
+  getParentRoute: () => AdminRouteRoute,
+} as any)
+const AdminLogsRoute = AdminLogsRouteImport.update({
+  id: '/logs',
+  path: '/logs',
+  getParentRoute: () => AdminRouteRoute,
+} as any)
+const AdminEconomyRoute = AdminEconomyRouteImport.update({
+  id: '/economy',
+  path: '/economy',
   getParentRoute: () => AdminRouteRoute,
 } as any)
 const ApiPublicHealthRoute = ApiPublicHealthRouteImport.update({
@@ -84,14 +84,14 @@ const ApiPublicHealthRoute = ApiPublicHealthRouteImport.update({
   path: '/api/public/health',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiPublicTelegramLoginRoute = ApiPublicTelegramLoginRouteImport.update({
-  id: '/api/public/telegram/login',
-  path: '/api/public/telegram/login',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const ApiPublicTelegramTickRoute = ApiPublicTelegramTickRouteImport.update({
   id: '/api/public/telegram/tick',
   path: '/api/public/telegram/tick',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPublicTelegramLoginRoute = ApiPublicTelegramLoginRouteImport.update({
+  id: '/api/public/telegram/login',
+  path: '/api/public/telegram/login',
   getParentRoute: () => rootRouteImport,
 } as any)
 
@@ -206,25 +206,11 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/': {
-      id: '/'
-      path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/admin': {
-      id: '/admin'
-      path: '/admin'
-      fullPath: '/admin'
-      preLoaderRoute: typeof AdminRouteRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/privacy': {
-      id: '/privacy'
-      path: '/privacy'
-      fullPath: '/privacy'
-      preLoaderRoute: typeof PrivacyRouteImport
+    '/war': {
+      id: '/war'
+      path: '/war'
+      fullPath: '/war'
+      preLoaderRoute: typeof WarRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/terms': {
@@ -234,11 +220,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof TermsRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/war': {
-      id: '/war'
-      path: '/war'
-      fullPath: '/war'
-      preLoaderRoute: typeof WarRouteImport
+    '/privacy': {
+      id: '/privacy'
+      path: '/privacy'
+      fullPath: '/privacy'
+      preLoaderRoute: typeof PrivacyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin': {
+      id: '/admin'
+      path: '/admin'
+      fullPath: '/admin'
+      preLoaderRoute: typeof AdminRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/': {
+      id: '/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin/': {
@@ -248,25 +248,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminIndexRouteImport
       parentRoute: typeof AdminRouteRoute
     }
-    '/admin/economy': {
-      id: '/admin/economy'
-      path: '/economy'
-      fullPath: '/admin/economy'
-      preLoaderRoute: typeof AdminEconomyRouteImport
-      parentRoute: typeof AdminRouteRoute
-    }
-    '/admin/logs': {
-      id: '/admin/logs'
-      path: '/logs'
-      fullPath: '/admin/logs'
-      preLoaderRoute: typeof AdminLogsRouteImport
-      parentRoute: typeof AdminRouteRoute
-    }
-    '/admin/nations': {
-      id: '/admin/nations'
-      path: '/nations'
-      fullPath: '/admin/nations'
-      preLoaderRoute: typeof AdminNationsRouteImport
+    '/admin/users': {
+      id: '/admin/users'
+      path: '/users'
+      fullPath: '/admin/users'
+      preLoaderRoute: typeof AdminUsersRouteImport
       parentRoute: typeof AdminRouteRoute
     }
     '/admin/tools': {
@@ -276,11 +262,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminToolsRouteImport
       parentRoute: typeof AdminRouteRoute
     }
-    '/admin/users': {
-      id: '/admin/users'
-      path: '/users'
-      fullPath: '/admin/users'
-      preLoaderRoute: typeof AdminUsersRouteImport
+    '/admin/nations': {
+      id: '/admin/nations'
+      path: '/nations'
+      fullPath: '/admin/nations'
+      preLoaderRoute: typeof AdminNationsRouteImport
+      parentRoute: typeof AdminRouteRoute
+    }
+    '/admin/logs': {
+      id: '/admin/logs'
+      path: '/logs'
+      fullPath: '/admin/logs'
+      preLoaderRoute: typeof AdminLogsRouteImport
+      parentRoute: typeof AdminRouteRoute
+    }
+    '/admin/economy': {
+      id: '/admin/economy'
+      path: '/economy'
+      fullPath: '/admin/economy'
+      preLoaderRoute: typeof AdminEconomyRouteImport
       parentRoute: typeof AdminRouteRoute
     }
     '/api/public/health': {
@@ -290,18 +290,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicHealthRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/public/telegram/login': {
-      id: '/api/public/telegram/login'
-      path: '/api/public/telegram/login'
-      fullPath: '/api/public/telegram/login'
-      preLoaderRoute: typeof ApiPublicTelegramLoginRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/api/public/telegram/tick': {
       id: '/api/public/telegram/tick'
       path: '/api/public/telegram/tick'
       fullPath: '/api/public/telegram/tick'
       preLoaderRoute: typeof ApiPublicTelegramTickRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/telegram/login': {
+      id: '/api/public/telegram/login'
+      path: '/api/public/telegram/login'
+      fullPath: '/api/public/telegram/login'
+      preLoaderRoute: typeof ApiPublicTelegramLoginRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
