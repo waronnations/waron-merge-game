@@ -55,7 +55,7 @@ describe("claimTaskState", () => {
 
   it("claims a completed task and grants rewards", () => {
     const s = baseState();
-    s.tasks = s.tasks.map((t) => (t.id === "merge10" ? { ...t, done: true } : t));
+    s.tasks = [{ id: "merge10", title: "Merge 10", target: 10, progress: 10, reward: 100, done: true, claimed: false } as any];
     const out = claimTaskState(s, "merge10");
     expect(out.ok).toBe(true);
     if (out.ok) {
