@@ -90,7 +90,7 @@ export const getBattlefieldInventoryFn = createServerFn({
  * Requires topped-up spendable; tax → ClaimTreasury.
  */
 export const buyBattlefieldWeaponFn = createServerFn({ method: "POST" })
-  .inputValidator((input: unknown) =>
+  .validator((input: unknown) =>
     z
       .object({
         weaponId: WeaponIdSchema,
@@ -118,7 +118,7 @@ export const buyBattlefieldWeaponFn = createServerFn({ method: "POST" })
  * `target` accepts "123456789" or "@someuser" / "someuser".
  */
 export const battlefieldStrikeFn = createServerFn({ method: "POST" })
-  .inputValidator((input: unknown) =>
+  .validator((input: unknown) =>
     z
       .object({
         target: z.string().min(1).max(64),
@@ -143,7 +143,7 @@ export const battlefieldStrikeFn = createServerFn({ method: "POST" })
 
 /** Attacker's personal ops history. */
 export const listOpsHistoryFn = createServerFn({ method: "GET" })
-  .inputValidator((input: unknown) =>
+  .validator((input: unknown) =>
     z
       .object({
         limit: z.number().int().min(1).max(100).optional().default(30),
@@ -160,7 +160,7 @@ export const listOpsHistoryFn = createServerFn({ method: "GET" })
 
 /** Global kill feed (recent hits + jail events). */
 export const listOpsKillFeedFn = createServerFn({ method: "GET" })
-  .inputValidator((input: unknown) =>
+  .validator((input: unknown) =>
     z
       .object({
         limit: z.number().int().min(1).max(50).optional().default(15),
@@ -176,7 +176,7 @@ export const listOpsKillFeedFn = createServerFn({ method: "GET" })
 
 /** Preview target before strike (name + protection). */
 export const lookupBattlefieldTargetFn = createServerFn({ method: "GET" })
-  .inputValidator((input: unknown) =>
+  .validator((input: unknown) =>
     z.object({ query: z.string().min(1).max(64) }).parse(input),
   )
   .handler(async ({ data }) => {
@@ -204,7 +204,7 @@ export const getOpsJailStatusFn = createServerFn({ method: "GET" }).handler(
  * Called from the client after a successful board attack.
  */
 export const announceLiveTargetFn = createServerFn({ method: "POST" })
-  .inputValidator((input: unknown) =>
+  .validator((input: unknown) =>
     z
       .object({
         type: z.enum(["nation", "player"]),

@@ -9,7 +9,7 @@ import {
 } from "@/lib/notifications.server";
 
 export const scheduleNotification = createServerFn({ method: "POST" })
-  .inputValidator((input: unknown) => ScheduleInput.parse(input))
+  .validator((input: unknown) => ScheduleInput.parse(input))
   .handler(async ({ data }) => {
     if (!hasDatabase()) return { ok: false, reason: "database_not_configured" as const };
     const ids = await sessionIds();

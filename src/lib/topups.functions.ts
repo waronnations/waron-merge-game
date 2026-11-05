@@ -43,7 +43,7 @@ const CreateTopupInput = z.object({
 });
 
 export const createTopup = createServerFn({ method: "POST" })
-  .inputValidator((input: unknown) => CreateTopupInput.parse(input))
+  .validator((input: unknown) => CreateTopupInput.parse(input))
   .handler(async ({ data }) => {
     if (!hasDatabase()) return { ok: false as const, error: "database_unavailable" };
     await ensureSchema();
@@ -63,7 +63,7 @@ const ConfirmTopupInput = z.object({
 });
 
 export const confirmTopupFn = createServerFn({ method: "POST" })
-  .inputValidator((input: unknown) => ConfirmTopupInput.parse(input))
+  .validator((input: unknown) => ConfirmTopupInput.parse(input))
   .handler(async ({ data }) => {
     if (!hasDatabase()) return { ok: false as const, error: "database_unavailable" };
     await ensureSchema();
@@ -81,7 +81,7 @@ const CancelTopupInput = z.object({
  * Instantly frees the lock so the user can retry.
  */
 export const cancelTopupFn = createServerFn({ method: "POST" })
-  .inputValidator((input: unknown) => CancelTopupInput.parse(input))
+  .validator((input: unknown) => CancelTopupInput.parse(input))
   .handler(async ({ data }) => {
     if (!hasDatabase()) return { ok: false as const, error: "database_unavailable" };
     await ensureSchema();

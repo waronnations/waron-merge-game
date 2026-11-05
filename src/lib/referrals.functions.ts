@@ -29,7 +29,7 @@ export const getReferralStatus = createServerFn({ method: "GET" }).handler(
 );
 
 export const claimReferralMilestone = createServerFn({ method: "POST" })
-  .inputValidator((input: unknown) => ClaimInput.parse(input))
+  .validator((input: unknown) => ClaimInput.parse(input))
   .handler(async ({ data }): Promise<ClaimMilestoneResult> => {
     if (!hasDatabase()) return { ok: false, error: "database_unavailable" };
     await ensureSchema();

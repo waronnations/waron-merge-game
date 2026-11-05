@@ -21,7 +21,7 @@ import {
 // ─── Economy & Claims ──────────────────────────────────────────────
 
 export const adminListClaimsFn = createServerFn({ method: "GET" })
-  .inputValidator((input: unknown) =>
+  .validator((input: unknown) =>
     z
       .object({
         status: z
@@ -41,7 +41,7 @@ export const adminListClaimsFn = createServerFn({ method: "GET" })
   });
 
 export const adminMarkClaimSentFn = createServerFn({ method: "POST" })
-  .inputValidator((input: unknown) =>
+  .validator((input: unknown) =>
     z
       .object({
         claimId: z.number().int().positive(),
@@ -59,7 +59,7 @@ export const adminMarkClaimSentFn = createServerFn({ method: "POST" })
   });
 
 export const adminMarkClaimFailedFn = createServerFn({ method: "POST" })
-  .inputValidator((input: unknown) =>
+  .validator((input: unknown) =>
     z
       .object({
         claimId: z.number().int().positive(),
@@ -76,7 +76,7 @@ export const adminMarkClaimFailedFn = createServerFn({ method: "POST" })
   });
 
 export const adminRefundClaimFn = createServerFn({ method: "POST" })
-  .inputValidator((input: unknown) =>
+  .validator((input: unknown) =>
     z
       .object({
         claimId: z.number().int().positive(),
@@ -93,7 +93,7 @@ export const adminRefundClaimFn = createServerFn({ method: "POST" })
   });
 
 export const adminListShopLedgerFn = createServerFn({ method: "GET" })
-  .inputValidator((input: unknown) =>
+  .validator((input: unknown) =>
     z
       .object({
         limit: z.number().int().min(1).max(200).optional().default(50),

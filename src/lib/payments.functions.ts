@@ -43,7 +43,7 @@ export const getPaymentConfigFn = createServerFn({ method: "GET" }).handler(
 );
 
 export const createPaymentIntentFn = createServerFn({ method: "POST" })
-  .inputValidator((input: unknown) => ActionInput.parse(input))
+  .validator((input: unknown) => ActionInput.parse(input))
   .handler(async ({ data }) => {
     if (!hasDatabase()) throw new Error("database_unavailable");
     await ensureSchema();
@@ -68,7 +68,7 @@ export const createPaymentIntentFn = createServerFn({ method: "POST" })
   });
 
 export const confirmPaymentFn = createServerFn({ method: "POST" })
-  .inputValidator((input: unknown) => ConfirmInput.parse(input))
+  .validator((input: unknown) => ConfirmInput.parse(input))
   .handler(async ({ data }) => {
     if (!hasDatabase()) throw new Error("database_unavailable");
     await ensureSchema();

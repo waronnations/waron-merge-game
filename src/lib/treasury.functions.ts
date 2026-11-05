@@ -47,7 +47,7 @@ export const getTreasuryHealthFn = createServerFn({ method: "GET" }).handler(
 );
 
 export const quoteTaxFn = createServerFn({ method: "GET" })
-  .inputValidator((input: unknown) =>
+  .validator((input: unknown) =>
     z
       .object({
         amount: z.number().nonnegative().max(1_000_000),

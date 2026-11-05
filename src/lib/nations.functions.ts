@@ -53,7 +53,7 @@ export const getRecentStrikesFn = createServerFn({ method: "GET" }).handler(asyn
 });
 
 export const getNationDetailsFn = createServerFn({ method: "GET" })
-  .inputValidator((input: unknown) => z.object({ nationId: z.number().int().positive() }).parse(input))
+  .validator((input: unknown) => z.object({ nationId: z.number().int().positive() }).parse(input))
   .handler(async ({ data }) => {
     if (!hasDatabase()) return null;
     await ensureSchema();
@@ -67,7 +67,7 @@ export const getNationDetailsFn = createServerFn({ method: "GET" })
   });
 
 export const joinNationFn = createServerFn({ method: "POST" })
-  .inputValidator((input: unknown) =>
+  .validator((input: unknown) =>
     z
       .object({
         nationId: z.number().int().positive(),
@@ -92,7 +92,7 @@ export const leaveNationFn = createServerFn({ method: "POST" }).handler(async ()
 });
 
 export const transferOwnershipFn = createServerFn({ method: "POST" })
-  .inputValidator((input: unknown) => z.object({ toUserId: z.number().int().positive() }).parse(input))
+  .validator((input: unknown) => z.object({ toUserId: z.number().int().positive() }).parse(input))
   .handler(async ({ data }) => {
     if (!hasDatabase()) throw new Error("database_unavailable");
     await ensureSchema();
@@ -102,7 +102,7 @@ export const transferOwnershipFn = createServerFn({ method: "POST" })
   });
 
 export const listNationForSaleFn = createServerFn({ method: "POST" })
-  .inputValidator((input: unknown) => z.object({ price: z.number().positive().max(10000) }).parse(input))
+  .validator((input: unknown) => z.object({ price: z.number().positive().max(10000) }).parse(input))
   .handler(async ({ data }) => {
     if (!hasDatabase()) throw new Error("database_unavailable");
     await ensureSchema();
@@ -124,7 +124,7 @@ export const unlistNationFn = createServerFn({ method: "POST" }).handler(async (
  * Full price (+ tax) is taken from the chosen token only — never TON.
  */
 export const buyNationFn = createServerFn({ method: "POST" })
-  .inputValidator((input: unknown) =>
+  .validator((input: unknown) =>
     z
       .object({
         nationId: z.number().int().positive(),
@@ -149,7 +149,7 @@ export const getNationLeaderboardFn = createServerFn({ method: "GET" }).handler(
 });
 
 export const getNationMembersFn = createServerFn({ method: "GET" })
-  .inputValidator((input: unknown) => z.object({ nationId: z.number().int().positive() }).parse(input))
+  .validator((input: unknown) => z.object({ nationId: z.number().int().positive() }).parse(input))
   .handler(async ({ data }) => {
     if (!hasDatabase()) return [];
     await ensureSchema();
@@ -157,7 +157,7 @@ export const getNationMembersFn = createServerFn({ method: "GET" })
   });
 
 export const donateToVaultFn = createServerFn({ method: "POST" })
-  .inputValidator((input: unknown) =>
+  .validator((input: unknown) =>
     z
       .object({
         nationId: z.number().int().positive(),
@@ -175,7 +175,7 @@ export const donateToVaultFn = createServerFn({ method: "POST" })
   });
 
 export const activateNationBuffFn = createServerFn({ method: "POST" })
-  .inputValidator((input: unknown) =>
+  .validator((input: unknown) =>
     z.object({ buffId: z.enum(["gloryBoost", "energySurge"]) }).parse(input),
   )
   .handler(async ({ data }) => {
@@ -187,7 +187,7 @@ export const activateNationBuffFn = createServerFn({ method: "POST" })
   });
 
 export const promoteOfficerFn = createServerFn({ method: "POST" })
-  .inputValidator((input: unknown) => z.object({ toUserId: z.number().int().positive() }).parse(input))
+  .validator((input: unknown) => z.object({ toUserId: z.number().int().positive() }).parse(input))
   .handler(async ({ data }) => {
     if (!hasDatabase()) throw new Error("database_unavailable");
     await ensureSchema();
@@ -197,7 +197,7 @@ export const promoteOfficerFn = createServerFn({ method: "POST" })
   });
 
 export const demoteOfficerFn = createServerFn({ method: "POST" })
-  .inputValidator((input: unknown) => z.object({ toUserId: z.number().int().positive() }).parse(input))
+  .validator((input: unknown) => z.object({ toUserId: z.number().int().positive() }).parse(input))
   .handler(async ({ data }) => {
     if (!hasDatabase()) throw new Error("database_unavailable");
     await ensureSchema();
@@ -217,7 +217,7 @@ export const activateProtectionFn = createServerFn({ method: "POST" }).handler(a
 });
 
 export const setRedemptionPriceFn = createServerFn({ method: "POST" })
-  .inputValidator((input: unknown) =>
+  .validator((input: unknown) =>
     z
       .object({
         wardog: z.number().min(0).max(200),
@@ -239,7 +239,7 @@ export const setRedemptionPriceFn = createServerFn({ method: "POST" })
  * pay=false → free after cooldown.
  */
 export const redeemTraitorFn = createServerFn({ method: "POST" })
-  .inputValidator((input: unknown) =>
+  .validator((input: unknown) =>
     z
       .object({
         pay: z.boolean(),
@@ -257,7 +257,7 @@ export const redeemTraitorFn = createServerFn({ method: "POST" })
 
 /** Ownership + governance audit trail for a nation. */
 export const getNationHistoryFn = createServerFn({ method: "GET" })
-  .inputValidator((input: unknown) =>
+  .validator((input: unknown) =>
     z.object({ nationId: z.number().int().positive() }).parse(input),
   )
   .handler(async ({ data }) => {
@@ -269,7 +269,7 @@ export const getNationHistoryFn = createServerFn({ method: "GET" })
 
 /** Governance: leader removes a member. */
 export const kickMemberFn = createServerFn({ method: "POST" })
-  .inputValidator((input: unknown) =>
+  .validator((input: unknown) =>
     z.object({ targetUserId: z.number().int().positive() }).parse(input),
   )
   .handler(async ({ data }) => {

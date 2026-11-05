@@ -24,7 +24,7 @@ export const getClaims = createServerFn({ method: "GET" }).handler(
 );
 
 export const createClaim = createServerFn({ method: "POST" })
-  .inputValidator((input: unknown) => ClaimRequestInput.parse(input))
+  .validator((input: unknown) => ClaimRequestInput.parse(input))
   .handler(async ({ data }): Promise<ClaimRequestResult> => {
     if (!hasDatabase()) return { ok: false, error: "database_unavailable" };
     await ensureSchema();
@@ -42,7 +42,7 @@ const MarkSubmittedInput = z.object({
 });
 
 export const markClaimTxSubmitted = createServerFn({ method: "POST" })
-  .inputValidator((input: unknown) => MarkSubmittedInput.parse(input))
+  .validator((input: unknown) => MarkSubmittedInput.parse(input))
   .handler(async ({ data }) => {
     if (!hasDatabase()) return { ok: false as const };
     await ensureSchema();
@@ -55,7 +55,7 @@ export const markClaimTxSubmitted = createServerFn({ method: "POST" })
   });
 
 export const refundFailedClaim = createServerFn({ method: "POST" })
-  .inputValidator((input: unknown) => ClaimRefundInput.parse(input))
+  .validator((input: unknown) => ClaimRefundInput.parse(input))
   .handler(async ({ data }) => {
     if (!hasDatabase()) return { ok: false as const, error: "database_unavailable" };
     await ensureSchema();

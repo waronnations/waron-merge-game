@@ -29,7 +29,7 @@ export const getCurrentUser = createServerFn({ method: "GET" }).handler(
  * Client must send address + proof { timestamp, domain, signature, payload }.
  */
 export const linkWallet = createServerFn({ method: "POST" })
-  .inputValidator((input: unknown) => WalletLinkSchema.parse(input))
+  .validator((input: unknown) => WalletLinkSchema.parse(input))
   .handler(async ({ data }) => {
     if (!hasDatabase()) throw new Error("database_not_configured");
     const userId = await requireUserId();
@@ -49,7 +49,7 @@ export const linkWallet = createServerFn({ method: "POST" })
 
 /** Legacy address-only link (disabled for security — use linkWallet with proof). */
 export const linkWalletLegacy = createServerFn({ method: "POST" })
-  .inputValidator((input: unknown) => WalletSchema.parse(input))
+  .validator((input: unknown) => WalletSchema.parse(input))
   .handler(async () => {
     throw new Error("use_linkWallet_with_ton_proof");
   });
