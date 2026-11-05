@@ -35,13 +35,13 @@ export function DailyQuestsPanel({
         </div>
       </div>
 
-      {!state.dailyQuests.length && (
+      {!(state.dailyQuests ?? []).length && (
         <div className="rounded-2xl border border-zinc-700 bg-zinc-900 p-6 text-center text-sm text-zinc-500">
           New daily ops incoming — check back shortly.
         </div>
       )}
 
-      {state.dailyQuests.map((q) => {
+      {(state.dailyQuests ?? []).map((q) => {
         const pct = Math.min(100, (q.progress / q.target) * 100);
         const ready = q.progress >= q.target && !q.claimed;
         const closedSrc = pickClosedImg("common");

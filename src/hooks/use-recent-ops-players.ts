@@ -21,10 +21,7 @@ export function useRecentOpsPlayers(limit = 20) {
         for (const entry of feed) {
           // Adjust these fields according to the real kill-feed shape
           const name =
-            entry?.attackerName ||
-            entry?.targetName ||
-            entry?.username ||
-            entry?.displayName;
+            entry?.attackerName || entry?.victimName;
           if (typeof name === "string" && name.length > 1) {
             names.add(name.replace("@", "").slice(0, 12));
           }

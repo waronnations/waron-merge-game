@@ -51,11 +51,11 @@ export function claimTaskState(
   s: GameState,
   id: string,
 ): { ok: true; nextState: GameState } | { ok: false; reason: string } {
-  const task = s.tasks.find((t) => t.id === id);
+  const task = (s.tasks ?? []).find((t) => t.id === id);
   if (!task || !task.done || task.claimed) {
     return { ok: false, reason: "already_claimed" };
   }
-  const tasks = s.tasks.map((t) =>
+  const tasks = (s.tasks ?? []).map((t) =>
     t.id === id ? { ...t, claimed: true } : t,
   );
   const nextState: GameState = {
@@ -73,11 +73,11 @@ export function claimDailyQuestState(
   s: GameState,
   id: string,
 ): { ok: true; nextState: GameState } | { ok: false; reason: string } {
-  const q = s.dailyQuests.find((x) => x.id === id);
+  const q = (s.dailyQuests ?? []).find((x) => x.id === id);
   if (!q || q.progress < q.target || q.claimed) {
     return { ok: false, reason: "already_claimed" };
   }
-  const dailyQuests = s.dailyQuests.map((x) =>
+  const dailyQuests = (s.dailyQuests ?? []).map((x) =>
     x.id === id ? { ...x, claimed: true } : x,
   );
   const nextState: GameState = {
