@@ -102,6 +102,7 @@ export type Cell = {
   id: number;
   faction: "dog" | "cat" | "hybrid";
   tier: number;
+  variant?: number;
   parentDogId?: number;
   parentCatId?: number;
   isHybrid?: boolean;

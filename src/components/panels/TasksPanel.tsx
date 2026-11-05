@@ -25,13 +25,13 @@ export function TasksPanel({
 
   return (
     <div className="space-y-2">
-      {!state.tasks.length && (
+      {!(state.tasks ?? []).length && (
         <div className="rounded-2xl border border-zinc-800 bg-black p-6 text-center text-sm text-zinc-500">
           All missions complete, soldier. Stand by for new orders.
         </div>
       )}
 
-      {state.tasks.map((t) => {
+      {(state.tasks ?? []).map((t) => {
         const claimed = !!t.claimed;
         const canClaim = !!t.done && !claimed;
         const closedSrc = pickClosedImg("common");

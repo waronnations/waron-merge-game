@@ -74,17 +74,17 @@ export function IdleWelcomeModal({ reward, onClose }: Props) {
 
             {!collected && (
               <div className="mt-5 grid grid-cols-2 gap-2.5">
-                {reward.glory > 0 && (
+                {(reward.glory ?? 0) > 0 && (
                   <div className="rounded-xl border border-zinc-700 bg-zinc-900/80 p-3 text-center">
                     <div className="text-[0.6rem] uppercase tracking-wider text-zinc-500">
                       Glory
                     </div>
                     <div className="mt-0.5 text-sm font-black text-amber-400">
-                      +{reward.glory.toLocaleString()}
+                      +{(reward.glory ?? 0).toLocaleString()}
                     </div>
                   </div>
                 )}
-                {reward.energy > 0 && (
+                {(reward.energy ?? 0) > 0 && (
                   <div className="rounded-xl border border-zinc-700 bg-zinc-900/80 p-3 text-center">
                     <div className="text-[0.6rem] uppercase tracking-wider text-zinc-500">
                       Energy

@@ -393,7 +393,7 @@ export function pickDailyQuests(_seed: number): DailyQuest[] {
     ...q,
     progress: 0,
     claimed: false,
-  }));
+  })) as DailyQuest[];
 }
 
 export function makeReferralCode(): string {
@@ -456,7 +456,7 @@ export function applyOfflineEnergyRegen(s: GameState): GameState {
 
 export function bumpDailyQuest(
   s: GameState,
-  type: "merge" | "spawn" | "tierUp",
+  type: "merge" | "spawn" | "tierUp" | "hybridMerge",
   amount = 1,
   _tier?: number,
 ): GameState {

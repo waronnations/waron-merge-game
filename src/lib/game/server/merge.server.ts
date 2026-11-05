@@ -104,7 +104,7 @@ export async function serverCommitMerge(
   }
 
   // ── LIVE TARGET ATTACK (War Mode) – SERVER AUTHORITATIVE ────────────
-  if ((b as any).isTarget && a.faction !== "target") {
+  if ((b as any).isTarget && (a.faction as string) !== "target") {
     // STRICT: adversary half only
     if (!canAttackIndex(a.faction, to)) {
       return {

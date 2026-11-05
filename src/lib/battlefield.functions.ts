@@ -155,7 +155,8 @@ export const listOpsHistoryFn = createServerFn({ method: "GET" })
     await ensureSchema();
     await ensureBattlefieldSchema();
     const userId = await requireUserId();
-    return listOpsHistory(userId, data.limit ?? 30);
+    const rows = await listOpsHistory(userId, data.limit ?? 30);
+    return rows.map((r) => ({ ...r, details: r.details as Record<string, any> }));
   });
 
 /** Global kill feed (recent hits + jail events). */

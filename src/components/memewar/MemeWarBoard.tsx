@@ -14,7 +14,7 @@ import { WarCoinTile } from "./WarCoinTile";
 import { WarMergeModal } from "./WarMergeModal";
 import { DominanceMeter, SeasonBar } from "./WarHud";
 
-export function MemeWarBoard() {
+export function MemeWarBoard({ embedded = false }: { embedded?: boolean } = {}) {
   const owner = useTonAddress();
   const [holdings, setHoldings] = useState<WarHolding[] | null>(null);
   const [demo, setDemo] = useState(true);
@@ -75,11 +75,13 @@ export function MemeWarBoard() {
   };
 
   return (
-    <div className="app-shell mx-auto w-full max-w-lg px-3 pb-10 pt-3">
-      <header className="mb-3 flex items-center justify-between gap-2">
-        <Link to="/" className="flex items-center gap-1 text-xs font-black uppercase text-muted-foreground">
-          <ChevronLeft className="h-4 w-4" /> Base
-        </Link>
+    <div className={embedded ? "mx-auto w-full max-w-lg pb-4" : "app-shell mx-auto w-full max-w-lg px-3 pb-10 pt-3"}>
+      <header className={embedded ? "mb-3 flex items-center justify-end gap-2" : "mb-3 flex items-center justify-between gap-2"}>
+        {!embedded && (
+          <Link to="/" className="flex items-center gap-1 text-xs font-black uppercase text-muted-foreground">
+            <ChevronLeft className="h-4 w-4" /> Back
+          </Link>
+        )}
         <TonConnectButton />
       </header>
 
