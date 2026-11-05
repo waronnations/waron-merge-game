@@ -3,8 +3,12 @@ import type { PrimaryTab } from "@/components/game/PrimaryTabBar";
 
 export const TAB_HERO: Record<PrimaryTab, { title: string; desc: string }> = {
   play: {
+    title: "Memecoin War",
+    desc: "Merge your real TON memecoins · live DeDust + STON.fi routes · crown one champion.",
+  },
+  battlefield: {
     title: "Battlefield",
-    desc: "Deploy recruits · merge same-tier units · climb tiers for glory & tokens.",
+    desc: "Pick a weapon, take aim and strike rival players for glory.",
   },
   ops: {
     title: "Daily operations",

@@ -198,7 +198,6 @@ function WaronMergePage() {
 
   void handleClaimTask;
   void handleClaimDailyQuest;
-  void showWarVictory;
 
   if (!game.hydrated) {
     return (
