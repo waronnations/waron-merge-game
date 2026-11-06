@@ -20,7 +20,6 @@ import {
 } from "@/lib/memewar/war-math";
 import { MEMEWAR_SLIPPAGE_OPTIONS, MEMEWAR_HIGH_IMPACT } from "@/lib/constants/memewar";
 import { getWarQuoteFn, recordWarMergeFn } from "@/lib/memewar/memewar.functions";
-import { buildWarMergeTx } from "@/lib/memewar/war-tx";
 import { haptic } from "@/lib/telegram";
 import { CoinLogo, fmtAmount, fmtUsd } from "./CoinLogo";
 import { cn } from "@/lib/utils";
@@ -139,6 +138,8 @@ export function WarMergeModal({
     }
     try {
       setPhase("signing");
+      await import("@/lib/onchain/buffer-polyfill");
+      const { buildWarMergeTx } = await import("@/lib/memewar/war-tx");
       const tx = await buildWarMergeTx({
         owner,
         quote: exec,
