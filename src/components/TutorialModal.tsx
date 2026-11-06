@@ -13,23 +13,23 @@ interface Props {
 const STEPS = [
   {
     icon: Swords,
-    title: "Merge your pack",
-    body: "Drag two units of the same faction, same tier, and same variant onto each other. Dogs with dogs, cats with cats. Higher tiers are stronger.",
+    title: "Build your army",
+    body: "Connect your TON wallet and your real memecoins appear as tiles. Without a wallet you can explore with a demo army.",
   },
   {
     icon: Zap,
-    title: "Manage energy",
-    body: "Merges and deploys cost energy. It regenerates over time. Spend tokens in the Shop for an instant refill when you need it.",
+    title: "Start a battle",
+    body: "Drag one coin onto another, or tap two coins. Pick an action: absorb into the stronger coin, total war, form an alliance, or retreat to TON.",
   },
   {
     icon: Flame,
-    title: "Hybrid clash",
-    body: "Merge a max-tier WARDOG with a max-tier WARCAT to create a Tier-6 Hybrid. Sacrifice it for big rewards or keep it on the board.",
+    title: "Best route, clear cost",
+    body: "Every battle checks DeDust and STON.fi for the best price. You see the expected output, price impact and War Tax before you confirm in your wallet.",
   },
   {
     icon: Coins,
     title: "Earn dual tokens",
-    body: "Merges drop $WARDOG and $WARCAT. Claim them later or spend them in the Shop, Nations vault, and more.",
+    body: "Battles earn $WARDOG and $WARCAT rewards. Claim them to your wallet or spend them in the Shop and Nations vault.",
   },
   {
     icon: Flag,
@@ -39,7 +39,7 @@ const STEPS = [
   {
     icon: Trophy,
     title: "Climb the ranks",
-    body: "Glory takes you from Recruit to Warlord. Complete quests, refer friends, and dominate the leaderboard.",
+    body: "Every battle scores season points for your champion coin. Only one memecoin wins the season. Refer friends and top the leaderboard.",
   },
 ];
 
