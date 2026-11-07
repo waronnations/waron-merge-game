@@ -13,6 +13,7 @@ export interface WarCoin {
   imageRaw: string | null;
   priceUsd: number;
   verified: boolean;
+  change24h?: number | null;
 }
 
 export interface WarHolding {
@@ -81,4 +82,25 @@ export interface SeasonInfo {
   ranking: SeasonRankEntry[];
   previousWinner: SeasonRankEntry | null;
   mode: "live" | "mock";
+  feed?: BattleFeedEntry[];
+  leaders?: { wallet: string; points: number; battles: number }[];
+  rally?: { master: string; supporters: number }[];
+}
+
+export interface BattleFeedEntry {
+  id: string;
+  wallet: string;
+  fromSymbol: string;
+  toSymbol: string;
+  amount: number;
+  points: number;
+  createdAt: number;
+}
+
+export interface WarProfile {
+  champion: string | null;
+  alerts: boolean;
+  battlesToday: number;
+  streak: number;
+  badges: string[];
 }

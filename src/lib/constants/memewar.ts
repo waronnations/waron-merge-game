@@ -25,6 +25,13 @@ export const MEMEWAR_SEASON_DAYS = 7;
 export const MEMEWAR_BOARD_SLOTS = 16;
 /** Ignore dust holdings below this USD value. */
 export const MEMEWAR_DUST_USD = 0.01;
+export const MEMEWAR_QUOTE_REFRESH_MS = 20_000;
+export const MEMEWAR_CONFIRM_POLL_MS = 5_000;
+export const MEMEWAR_CONFIRM_ATTEMPTS = 24;
+export const MEMEWAR_INTENT_TTL_MS = 10 * 60_000;
+export const MEMEWAR_DAILY_MISSION_TARGET = 3;
+export const MEMEWAR_FEED_LIMIT = 20;
+export const MEMEWAR_ALERT_COOLDOWN_MS = 6 * 60 * 60_000;
 
 /** Well-known jettons used for demo boards and the global ticker. */
 export const MEMEWAR_KNOWN_COINS = [
