@@ -6,10 +6,12 @@
  */
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import { getWalletHoldings, getDemoHoldings, getPrices } from "./tonapi.server";
+import { getWalletHoldings, getDemoHoldings, rawAddr } from "./tonapi.server";
 import { aggregateQuote } from "./aggregator/index.server";
-import { getSeason, recordMerge } from "./season.server";
-import { seasonPoints } from "./war-math";
+import { getSeason, ensureWarSchema, getWarProfile, claimBattleMission } from "./season.server";
+import { requireUserId } from "@/lib/auth.server";
+import { sql } from "@/lib/db/client.server";
+import { prepareBattle, confirmBattle } from "./battle.server";
 import { TON_TARGET } from "./types";
 
 const addr = z.string().min(40).max(70).regex(/^[A-Za-z0-9_\-:]+$/);
@@ -22,7 +24,7 @@ export const getWarHoldingsFn = createServerFn({ method: "POST" })
       return { demo: false, holdings: await getWalletHoldings(data.owner) };
     } catch (e) {
       console.error("[memewar] holdings failed", e);
-      return { demo: true, holdings: await getDemoHoldings(), error: "holdings_unavailable" };
+      return { demo: false, holdings: [], error: "holdings_unavailable" };
     }
   });
 
@@ -70,21 +72,34 @@ export const recordWarMergeFn = createServerFn({ method: "POST" })
       .parse(d),
   )
   .handler(async ({ data }) => {
-    if (data.toMaster === TON_TARGET) return { recorded: false };
-    // Re-price server-side; never trust a client USD figure.
-    const price = (await getPrices([data.fromMaster]))[data.fromMaster] ?? 0;
-    const usd = data.fromAmount * price;
-    const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(data.txBoc));
-    const hash = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
-    return recordMerge({
-      wallet: data.wallet,
-      txBocHash: hash,
-      action: data.action,
-      fromMaster: data.fromMaster,
-      toMaster: data.toMaster,
-      toSymbol: data.toSymbol,
-      toImage: data.toImage,
-      usd,
-      points: seasonPoints(data.action, usd),
-    });
+    await requireUserId();
+    void data;
+    // Compatibility endpoint: unsigned client reports cannot award points.
+    return { recorded: false };
   });
+
+export const prepareWarBattleFn = createServerFn({ method: "POST" })
+  .inputValidator((d: unknown) => z.object({ owner: addr, from: addr, to: z.union([addr, z.literal(TON_TARGET)]), action: z.enum(["absorb", "totalWar", "alliance", "retreat"]), taxMaster: addr, slippage: z.number().min(0.001).max(0.2) }).parse(d))
+  .handler(({ data }) => prepareBattle(data));
+
+export const confirmWarBattleFn = createServerFn({ method: "POST" })
+  .inputValidator((d: unknown) => z.object({ id: z.string().uuid(), txBoc: z.string().min(16).max(20_000).optional() }).parse(d))
+  .handler(({ data }) => confirmBattle(data.id, data.txBoc));
+
+export const getWarProfileFn = createServerFn({ method: "GET" })
+  .inputValidator((d: unknown) => z.undefined().parse(d))
+  .handler(async () => getWarProfile(await requireUserId()));
+
+export const setWarPreferencesFn = createServerFn({ method: "POST" })
+  .inputValidator((d: unknown) => z.object({ champion: addr.nullable(), alerts: z.boolean() }).parse(d))
+  .handler(async ({ data }) => {
+    const userId = await requireUserId();
+    await ensureWarSchema();
+    const champion = data.champion ? rawAddr(data.champion) : null;
+    await sql`INSERT INTO memewar_preferences (user_id, champion, alerts) VALUES (${userId}, ${champion}, ${data.alerts}) ON CONFLICT (user_id) DO UPDATE SET champion = EXCLUDED.champion, alerts = EXCLUDED.alerts, last_rank = NULL`;
+    return getWarProfile(userId);
+  });
+
+export const claimWarMissionFn = createServerFn({ method: "POST" })
+  .inputValidator((d: unknown) => z.undefined().parse(d))
+  .handler(async () => claimBattleMission(await requireUserId()));

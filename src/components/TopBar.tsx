@@ -1,27 +1,25 @@
 // src/components/TopBar.tsx
 import { motion } from "framer-motion";
-import { Zap, Star, Wallet } from "lucide-react";
-import { MAX_ENERGY, type GameState } from "@/lib/game-state";
+import { Star, Wallet, Swords } from "lucide-react";
+import { type GameState } from "@/lib/game-state";
 import { getRank, getLevel } from "@/lib/ranks";
 import { cn } from "@/lib/utils";
 import { usePayments } from "@/components/payments/PaymentProvider";
 import { TopupButton } from "@/components/TopupButton";
+import { ActionButton } from "@/components/ActionButton";
 
 export function TopBar({ state }: { state: GameState }) {
   const { rank, next, progress } = getRank(state.glory);
   const level = getLevel(state.glory);
-  const energyPct = Math.min(100, (state.energy / MAX_ENERGY) * 100);
   const { connected, address, connectWallet, disconnectWallet } = usePayments();
 
   return (
-    <div className="sticky top-0 z-30 border-b border-zinc-800/80 bg-black/95 px-3 pb-3.5 pt-3.5 backdrop-blur-xl">
+    <div className="sticky top-0 z-30 border-b border-border bg-background/95 px-3 py-3 backdrop-blur-xl">
       <div className="mx-auto max-w-md">
         <div className="flex items-center gap-3">
           <div className="relative shrink-0">
-            <div className="grid h-14 w-14 place-items-center rounded-2xl border border-zinc-700 bg-gradient-to-br from-zinc-900 to-black shadow-inner ring-1 ring-white/10">
-              <div className={cn("text-2xl drop-shadow-md", rank.color)}>
-                {rank.insignia}
-              </div>
+            <div className="grid h-11 w-11 place-items-center rounded-lg border border-destructive/40 bg-destructive/10 text-destructive">
+              <Swords className="h-6 w-6" />
             </div>
           </div>
 
@@ -29,10 +27,10 @@ export function TopBar({ state }: { state: GameState }) {
             <div className="flex items-center justify-between gap-2">
               <div className="min-w-0">
                 <div className="truncate text-sm font-black uppercase tracking-widest text-white">
-                  {rank.name}
+                  WARDOG MERGE
                 </div>
                 <div className="text-[0.65rem] text-zinc-500">
-                  Level {level}
+                  {rank.name} · Level {level}
                 </div>
               </div>
 
@@ -76,26 +74,9 @@ export function TopBar({ state }: { state: GameState }) {
               </motion.span>
             </div>
 
-            <div className="flex items-center gap-1.5 rounded-2xl border border-zinc-700 bg-zinc-900/90 px-2.5 py-1.5">
-              <Zap
-                className="h-3.5 w-3.5 text-white"
-                fill="currentColor"
-              />
-              <div className="relative h-1.5 w-14 overflow-hidden rounded-full bg-zinc-800">
-                <motion.div
-                  className="h-full rounded-full bg-gradient-to-r from-zinc-300 via-white to-zinc-200"
-                  animate={{ width: `${energyPct}%` }}
-                  transition={{ duration: 0.35 }}
-                />
-              </div>
-              <span className="tabular-nums text-xs font-bold text-white/90">
-                {state.energy}
-              </span>
-            </div>
-
             <div className="flex items-center gap-1">
               <TopupButton className="!px-2 !py-1 !text-[0.55rem]" />
-              <button
+              <ActionButton
                 type="button"
                 title={
                   connected && address
@@ -115,7 +96,7 @@ export function TopBar({ state }: { state: GameState }) {
               >
                 <Wallet className="h-3 w-3" />
                 {connected ? "On" : "Off"}
-              </button>
+              </ActionButton>
             </div>
           </div>
         </div>

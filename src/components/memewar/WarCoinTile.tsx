@@ -3,6 +3,8 @@ import { motion } from "framer-motion";
 import type { WarHolding } from "@/lib/memewar/types";
 import { CoinLogo, fmtAmount, fmtUsd } from "./CoinLogo";
 import { cn } from "@/lib/utils";
+import { ActionButton } from "@/components/ActionButton";
+const MotionButton = motion.create(ActionButton);
 
 export function WarCoinTile({
   holding,
@@ -25,7 +27,7 @@ export function WarCoinTile({
   const { coin } = holding;
   const glow = Math.round(6 + power * 26);
   return (
-    <motion.button
+    <MotionButton
       type="button"
       layout
       data-war-slot={index}
@@ -44,7 +46,7 @@ export function WarCoinTile({
         if (slot !== undefined) onDropOn(Number(slot));
       }}
       className={cn(
-        "war-tile relative flex aspect-square touch-none select-none flex-col items-center justify-center gap-1 rounded-2xl border p-1.5 text-center",
+        "war-tile relative flex aspect-square touch-none select-none flex-col items-center justify-center gap-1 rounded-lg border p-1.5 text-center",
         selected ? "border-destructive" : dropTarget ? "border-primary" : "border-border",
       )}
       style={{ boxShadow: `0 0 ${glow}px color-mix(in srgb, var(--destructive) ${Math.round(25 + power * 60)}%, transparent)` }}
@@ -55,9 +57,10 @@ export function WarCoinTile({
       <div className="w-full truncate text-[11px] font-black uppercase leading-none text-foreground">{coin.symbol}</div>
       <div className="w-full truncate text-[10px] font-bold leading-none text-muted-foreground">{fmtAmount(holding.amount)}</div>
       <div className="w-full truncate text-[10px] font-black leading-none text-primary">{fmtUsd(holding.usd)}</div>
+      {coin.change24h != null && <div className={cn("text-[9px] tabular-nums", coin.change24h >= 0 ? "text-success" : "text-destructive")}>{coin.change24h >= 0 ? "+" : ""}{coin.change24h.toFixed(1)}%</div>}
       <div className="absolute inset-x-2 bottom-1 h-0.5 overflow-hidden rounded bg-muted">
         <div className="h-full bg-destructive" style={{ width: `${Math.max(4, power * 100)}%` }} />
       </div>
-    </motion.button>
+    </MotionButton>
   );
 }
