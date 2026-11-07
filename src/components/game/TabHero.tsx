@@ -1,7 +1,8 @@
 // src/components/game/TabHero.tsx
 import type { PrimaryTab } from "@/components/game/PrimaryTabBar";
 
-export const TAB_HERO: Record<PrimaryTab, { title: string; desc: string }> = {
+export const TAB_HERO: Record<PrimaryTab | "ops" | "battlefield", { title: string; desc: string }> = {
+  season: { title: "Season", desc: "Confirmed coin battles and commander rankings." },
   play: {
     title: "Memecoin War",
     desc: "Merge your real TON memecoins · live DeDust + STON.fi routes · crown one champion.",
@@ -15,20 +16,20 @@ export const TAB_HERO: Record<PrimaryTab, { title: string; desc: string }> = {
     desc: "Finish the 3 daily ops, then tap CLAIM — rewards only pay when claimed.",
   },
   world: {
-    title: "World theater",
+    title: "Nations",
     desc: "Join or lead a nation, or launch Strategic Nukes against other countries.",
   },
   earn: {
-    title: "Economy",
+    title: "Rewards",
     desc: "Shop uses topped-up tokens · Claim unclaimed merge earnings · Recruit allies.",
   },
   base: {
-    title: "Your command",
+    title: "Profile",
     desc: "Profile stats and the global ranks leaderboard.",
   },
 };
 
-export function TabHero({ tab }: { tab: PrimaryTab }) {
+export function TabHero({ tab }: { tab: PrimaryTab | "ops" | "battlefield" }) {
   const h = TAB_HERO[tab];
   return (
     <div className="tab-hero mb-3">

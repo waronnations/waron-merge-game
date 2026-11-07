@@ -3,7 +3,7 @@
 @import "tw-animate-css";
 
 :root {
-  --radius: 0.75rem;
+  --radius: 0.5rem;
   --background: #000000;
   --foreground: #fafafa;
   --panel: #0a0a0a;
@@ -11,22 +11,22 @@
   --card-foreground: #fafafa;
   --popover: #0a0a0a;
   --popover-foreground: #fafafa;
-  --primary: #f59e0b;              /* amber — rewards / primary CTA */
+  --primary: #fafafa;
   --primary-foreground: #000000;
   --secondary: #111111;
   --secondary-foreground: #fafafa;
   --muted: #1a1a1a;
   --muted-foreground: #a1a1aa;
-  --accent: #f59e0b;
-  --accent-foreground: #000000;
+  --accent: #ef4444;
+  --accent-foreground: #ffffff;
   --destructive: #ef4444;          /* red — strike / danger */
   --destructive-foreground: #ffffff;
   --border: #27272a;
   --input: #111111;
-  --ring: #f59e0b;
+  --ring: #ef4444;
   --wardog: #f87171;               /* soft red */
   --warcat: #a78bfa;               /* soft violet */
-  --gold: #f59e0b;                 /* amber gold for glory */
+  --gold: #fafafa;
   --success: #34d399;              /* emerald */
   --info: #38bdf8;                 /* sky */
   --nav-h: 5rem;
@@ -241,6 +241,37 @@ body {
 .war-tile {
   background: radial-gradient(circle at 50% 30%, color-mix(in srgb, var(--destructive) 14%, var(--card)), var(--card) 70%);
 }
+.war-shell { --color-amber-400: var(--foreground); --color-amber-500: var(--foreground); --color-amber-600: var(--destructive); --color-yellow-400: var(--foreground); }
+.war-shell .tab-hero { border: 0; border-bottom: 1px solid var(--border); border-radius: 0; background: none; padding: 0 0 1rem; }
+.war-shell .tab-hero-title, .war-shell .section-label { color: var(--foreground); letter-spacing: 0; }
+.war-shell .subtab-btn-active { background: var(--destructive); color: var(--destructive-foreground); box-shadow: none; }
+.war-shell .nav-item-active { color: var(--foreground); }
+.war-shell .nav-item-active .nav-icon-wrap { background: color-mix(in srgb, var(--destructive) 16%, transparent); box-shadow: none; border: 1px solid var(--destructive); }
+.war-shell .hit-cta-primary { background: var(--foreground); color: var(--background); box-shadow: none; }
+.war-shell [class*="tracking-"] { letter-spacing: 0; }
+.war-shell .tab-hero-desc { display: none; }
+.war-shell section { border-radius: 0; }
+.battle-impact { border: 2px solid var(--destructive); box-shadow: 0 0 40px color-mix(in srgb, var(--destructive) 30%, transparent); }
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-ring: var(--ring);
+  --color-success: var(--success);
+  --color-info: var(--info);
+}
 .war-ticker-track {
   animation: war-ticker 28s linear infinite;
 }
@@ -250,4 +281,5 @@ body {
 }
 @media (prefers-reduced-motion: reduce) {
   .war-ticker-track { animation: none; }
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
 }

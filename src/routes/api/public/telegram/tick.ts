@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { timingSafeEqual } from "node:crypto";
 import { ensureSchema, hasDatabase } from "@/lib/db.server";
 import { flushDueNotifications } from "@/lib/notifications.server";
+import { flushWarAlerts } from "@/lib/memewar/alerts.server";
 
 /**
  * Optional external scheduler endpoint — flushes due bot notifications.
@@ -35,7 +36,8 @@ export const Route = createFileRoute("/api/public/telegram/tick")({
 
         await ensureSchema();
         const results = await flushDueNotifications(25);
-        return Response.json({ processed: results.length, results });
+        const war = await flushWarAlerts();
+        return Response.json({ processed: results.length, results, war });
       },
     },
   },

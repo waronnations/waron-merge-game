@@ -1,5 +1,5 @@
 // src/components/memewar/CoinLogo.tsx
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 
 /** Jetton logo with fallback chain: proxied preview → raw metadata → initials badge. */
@@ -16,14 +16,12 @@ export function CoinLogo({
 }) {
   const sources = [image, imageRaw].filter((s, i, a): s is string => Boolean(s) && a.indexOf(s) === i);
   const [idx, setIdx] = useState(0);
+  useEffect(() => setIdx(0), [image, imageRaw, symbol]);
   const src = sources[idx];
   if (!src) {
-    let h = 0;
-    for (const c of symbol) h = (h * 31 + c.charCodeAt(0)) % 360;
     return (
       <div
-        className={cn("flex items-center justify-center rounded-full font-black text-foreground", className)}
-        style={{ background: `linear-gradient(135deg, hsl(${h} 70% 35%), hsl(${(h + 40) % 360} 70% 18%))` }}
+        className={cn("flex items-center justify-center rounded-full border border-border bg-secondary font-black text-foreground", className)}
         aria-label={symbol}
       >
         <span className="text-[0.7em]">{symbol.slice(0, 3)}</span>
