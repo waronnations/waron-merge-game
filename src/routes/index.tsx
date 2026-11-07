@@ -51,6 +51,7 @@ export const Route = createFileRoute("/")({
 function WaronMergePage() {
   const game = useGame();
   const [tab, setTab] = useState<PrimaryTab>("play");
+  const [warSub, setWarSub] = useState<"board" | "ops" | "battlefield">("board");
   const [worldSub, setWorldSub] = useState<WorldSub>("nations");
   const [earnSub, setEarnSub] = useState<EarnSub>("shop");
   const [baseSub, setBaseSub] = useState<BaseSub>("profile");
@@ -224,8 +225,15 @@ function WaronMergePage() {
       )}
 
       <main className="app-main flex-1 overflow-y-auto px-3 pt-2 pb-20">
+        {tab === "play" && (
+          <select aria-label="War view" value={warSub} onChange={(event) => setWarSub(event.target.value as "board" | "ops" | "battlefield")} className="mb-3 w-full rounded-lg border border-border bg-secondary p-2 text-sm text-foreground">
+            <option value="board">Coin board</option>
+            <option value="ops">Operations</option>
+            <option value="battlefield">Battlefield</option>
+          </select>
+        )}
         <AnimatePresence mode="wait">
-          {tab === "play" && (
+          {tab === "play" && warSub === "board" && (
             <motion.div
               key="play"
               initial={{ opacity: 0, y: 6 }}
@@ -237,7 +245,7 @@ function WaronMergePage() {
             </motion.div>
           )}
 
-          {tab === "ops" && (
+          {tab === "play" && warSub === "ops" && (
             <motion.div
               key="ops"
               initial={{ opacity: 0, y: 6 }}
@@ -249,7 +257,7 @@ function WaronMergePage() {
             </motion.div>
           )}
 
-          {tab === "battlefield" && (
+          {tab === "play" && warSub === "battlefield" && (
             <motion.div
               key="battlefield"
               initial={{ opacity: 0, y: 6 }}
@@ -324,6 +332,9 @@ function WaronMergePage() {
                 user={session.user}
               />
             </motion.div>
+          )}
+          {tab === "season" && (
+            <BaseTab baseSub="ranks" setBaseSub={() => setTab("base")} state={game.state} leaderboard={leaderboard} myUserId={session.user?.id ?? null} authenticated={authenticated} user={session.user} />
           )}
         </AnimatePresence>
       </main>
